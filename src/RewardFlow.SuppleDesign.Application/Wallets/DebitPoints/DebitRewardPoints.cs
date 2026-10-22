@@ -4,6 +4,7 @@ using RewardFlow.SuppleDesign.Domain.ValueObjects;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Intention-Revealing Interfaces: primary port for reward redemption.</summary>
+/// <remarks>Lets primary adapters depend on the redemption capability rather than its orchestration details.</remarks>
 public interface IDebitRewardPoints
 {
     /// <summary>Intention-Revealing Interfaces: debits points and returns the saved balance.</summary>

@@ -4,6 +4,10 @@ using RewardFlow.SuppleDesign.Domain.Ports;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Conceptual Contours: shared application persistence coordination.</summary>
+/// <remarks>
+/// This helper exists because multiple use cases share the same not-found and optimistic-concurrency policy. It owns
+/// no business rule and should be removed if that coordination stops being shared.
+/// </remarks>
 internal static class WalletPersistence
 {
     /// <summary>Assertions: a command or query must address an existing, identified wallet.</summary>

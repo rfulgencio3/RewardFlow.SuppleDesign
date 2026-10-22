@@ -3,6 +3,7 @@ using RewardFlow.SuppleDesign.Domain.Ports;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Query port for obtaining the current wallet balance without requesting a state change.</summary>
+/// <remarks>Separates the read capability from HTTP and from state-changing wallet commands.</remarks>
 public interface IGetWalletBalance
 {
     /// <summary>Reads the current balance without creating or changing a wallet.</summary>

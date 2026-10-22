@@ -4,6 +4,7 @@ using RewardFlow.SuppleDesign.Domain.Ports;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Intention-Revealing Interfaces: primary port for opening a rewards wallet.</summary>
+/// <remarks>Lets the HTTP adapter invoke this use case without depending on its implementation.</remarks>
 /// <seealso href="https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html">Eric Evans, Chapter 10: Intention-Revealing Interfaces</seealso>
 public interface IOpenRewardsWallet
 {

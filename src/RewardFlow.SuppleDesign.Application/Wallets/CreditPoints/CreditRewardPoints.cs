@@ -4,6 +4,7 @@ using RewardFlow.SuppleDesign.Domain.ValueObjects;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Intention-Revealing Interfaces: primary port for earned-point credits.</summary>
+/// <remarks>Lets primary adapters depend on the credit capability rather than its orchestration details.</remarks>
 public interface ICreditRewardPoints
 {
     /// <summary>Intention-Revealing Interfaces: credits points and returns the saved balance.</summary>

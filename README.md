@@ -58,6 +58,7 @@ The sample deliberately remains small: it uses in-memory persistence and does no
 - [Ubiquitous Language and rules](#ubiquitous-language-and-rules)
 - [Architecture: Clean Architecture and Hexagonal Ports](#architecture-clean-architecture-and-hexagonal-ports)
 - [Project structure](#project-structure)
+- [Abstraction budget](#abstraction-budget)
 - [Evans' model building blocks and RewardFlow](#evans-model-building-blocks-and-rewardflow)
 - [How the code applies Evans' Supple Design patterns](#how-the-code-applies-evans-supple-design-patterns)
 - [HTTP contract and errors](#http-contract-and-errors)
@@ -309,6 +310,25 @@ RewardFlow.SuppleDesign/
 | `RewardFlow.SuppleDesign.Infrastructure` | Replaceable implementations of outbound ports | Domain |
 | `RewardFlow.SuppleDesign.Api` | HTTP endpoints, API contracts, error translation and dependency composition | Application and Infrastructure |
 | `RewardFlow.SuppleDesign.Tests` | Executable examples across domain, application and HTTP boundaries | The system under test |
+
+## Abstraction budget
+
+Supple Design favors code that exposes the model with the least machinery needed to protect it. Every abstraction in this sample therefore needs a current reason to exist and a clear condition under which it should be reconsidered.
+
+| Abstraction | Why it exists now | Reconsider it when |
+| --- | --- | --- |
+| `RewardPoints` | Gives point arithmetic, range checks and value equality one domain home instead of scattering primitive `long` operations. | Points no longer have behavior or invariants beyond the primitive value. |
+| `RewardsWallet` | Defines the consistency boundary for identity, balance and credit/debit behavior. | Wallet behavior separates into independently consistent concepts. |
+| `IRewardsWallet` | Names the small domain role required to demonstrate an intention-revealing interface. It is not presented as a persistence or DI seam, and `RewardsWallet` is its only implementation. | The teaching goal no longer needs the explicit role contract, or a real second domain implementation changes its shape. |
+| `DomainAssertions` | Shares domain assertions used across `RewardPoints` and `RewardsWallet` while preserving domain-specific error codes. | A rule belongs to only one type; move it beside that state instead of growing a generic validation utility. |
+| Application use-case interfaces | Act as inbound ports so the HTTP controller depends on capabilities such as crediting and checking affordability, not concrete orchestration. | The application is no longer consumed through an adapter boundary, or several ports acquire identical semantics and can be combined without losing language. |
+| `WalletBalance` and `WalletAffordability` | Return application results without coupling use cases to HTTP DTOs or exposing mutable aggregates. | A result has exactly one consumer and no boundary-specific representation to isolate. |
+| `IRewardsWalletRepository` | Is the outbound persistence port; the current in-memory adapter can be replaced without changing domain or application code. | Storage is no longer replaceable or persistence behavior becomes part of a different consistency boundary. |
+| `WalletSnapshot` and revision checks | Prevent concurrent commands from silently overwriting a balance loaded from an older revision. | The chosen store supplies an equivalent concurrency contract through a simpler port. |
+| `WalletPersistence` | Centralizes the repeated not-found and optimistic-save coordination shared by several use cases. | Only one caller remains or the shared workflow begins hiding different business decisions. |
+| API DTOs and `ApiExceptionHandler` | Keep validation, serialization, status codes and Problem Details at the HTTP boundary. | The primary adapter changes; replace these contracts rather than leaking HTTP into the core. |
+
+The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
 
 ## Evans' model building blocks and RewardFlow
 
