@@ -35,8 +35,23 @@ The goal is to make business code easy to read, reason about and change. Small, 
 | API discovery | Swagger UI and OpenAPI |
 | Verification | Domain, application and HTTP integration tests |
 
+## Does this project fulfill the purpose of Supple Design?
+
+**Yes—within the scope of an educational sample.** The domain model communicates the language of rewards directly, keeps calculations predictable and separates business decisions from HTTP and persistence concerns. Its flexibility comes from clear concepts and replaceable boundaries, rather than from adding abstractions before the domain needs them.
+
+| Design quality | Evidence in RewardFlow |
+| --- | --- |
+| Reveals intent | `Credit`, `Debit` and `CanAfford` express the Ubiquitous Language. |
+| Protects invariants | `DomainAssertions`, `RewardPoints` and `RewardsWallet` reject invalid states at the domain boundary. |
+| Keeps reasoning local | Point arithmetic stays in `RewardPoints`; wallet lifecycle and balance changes stay in `RewardsWallet`. |
+| Avoids hidden effects | `CanAfford` answers a question without changing the wallet, while commands make mutations explicit. |
+| Supports change | Application ports isolate use cases, and repository and HTTP adapters can be replaced without moving business rules out of the Domain. |
+
+The sample deliberately remains small: it uses in-memory persistence and does not add factories, domain services, messaging or other mechanisms without a concrete modeling need. Those limits keep the design supple and readable; production concerns can be introduced when a real requirement justifies them. See [How the code applies Evans' Supple Design patterns](#how-the-code-applies-evans-supple-design-patterns) for the detailed code mapping.
+
 ## Table of contents
 
+- [Does this project fulfill the purpose of Supple Design?](#does-this-project-fulfill-the-purpose-of-supple-design)
 - [Source and further reading](#source-and-further-reading)
 - [Educational commentary disclaimer](#educational-commentary-disclaimer)
 - [Run and verify](#run-and-verify)
