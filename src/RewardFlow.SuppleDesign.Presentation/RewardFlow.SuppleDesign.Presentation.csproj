@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../RewardFlow.SuppleDesign.Application/RewardFlow.SuppleDesign.Application.csproj" />
+    <ProjectReference Include="../RewardFlow.SuppleDesign.Infrastructure/RewardFlow.SuppleDesign.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

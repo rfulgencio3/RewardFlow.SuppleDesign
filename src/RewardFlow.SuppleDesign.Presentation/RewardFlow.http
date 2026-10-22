@@ -1,0 +1,26 @@
+@host = http://localhost:5180
+@wallet = 7dc7c3c8-926a-483b-96cd-4502678c38d5
+
+### Open a wallet before crediting or debiting
+POST {{host}}/api/wallets/{{wallet}}
+
+### Earn points
+POST {{host}}/api/wallets/{{wallet}}/credit
+Content-Type: application/json
+
+{ "points": 100 }
+
+### Redeem points
+POST {{host}}/api/wallets/{{wallet}}/debit
+Content-Type: application/json
+
+{ "points": 40 }
+
+### Check the balance (60 after the preceding requests)
+GET {{host}}/api/wallets/{{wallet}}/balance
+
+### Rejected overdraft (422; balance stays 60)
+POST {{host}}/api/wallets/{{wallet}}/debit
+Content-Type: application/json
+
+{ "points": 61 }

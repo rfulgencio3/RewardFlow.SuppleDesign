@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RewardFlow.SuppleDesign.Application/RewardFlow.SuppleDesign.Application.csproj" />
+    <Project Path="src/RewardFlow.SuppleDesign.Domain/RewardFlow.SuppleDesign.Domain.csproj" />
+    <Project Path="src/RewardFlow.SuppleDesign.Infrastructure/RewardFlow.SuppleDesign.Infrastructure.csproj" />
+    <Project Path="src/RewardFlow.SuppleDesign.Presentation/RewardFlow.SuppleDesign.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/RewardFlow.SuppleDesign.Tests/RewardFlow.SuppleDesign.Tests.csproj" />
+  </Folder>
+</Solution>

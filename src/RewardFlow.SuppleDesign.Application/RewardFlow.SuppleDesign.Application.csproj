@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../RewardFlow.SuppleDesign.Domain/RewardFlow.SuppleDesign.Domain.csproj" />
+  </ItemGroup>
+</Project>
