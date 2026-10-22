@@ -4,6 +4,7 @@ using RewardFlow.SuppleDesign.Domain.ValueObjects;
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Query port for checking a prospective redemption without changing wallet state.</summary>
+/// <remarks>Exposes a pure domain question to primary adapters without exposing the aggregate itself.</remarks>
 public interface ICheckWalletAffordability
 {
     /// <summary>Checks whether the wallet can afford the required points.</summary>
