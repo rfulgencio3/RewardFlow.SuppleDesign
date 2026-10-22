@@ -1,13 +1,20 @@
+using Microsoft.OpenApi.Models;
 using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Domain.Ports;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
-using RewardFlow.SuppleDesign.Presentation.Errors;
+using RewardFlow.SuppleDesign.Api.Errors;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "RewardFlow API",
+        Version = "v1",
+        Description = "Loyalty and reward points management API."
+    });
     var xmlFile = $"{typeof(Program).Assembly.GetName().Name}.xml";
     options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFile));
 });

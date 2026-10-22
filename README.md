@@ -88,7 +88,7 @@ These links are study aids, not claims that this sample is the only valid implem
 
 ### Prerequisites
 
-Install a .NET SDK with `.slnx` support (9.0.200 or later) and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; Presentation uses Swashbuckle for Swagger and OpenAPI.
+Install a .NET SDK with `.slnx` support (9.0.200 or later) and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; the API project uses Swashbuckle for Swagger and OpenAPI.
 
 ### Start the API
 
@@ -98,7 +98,7 @@ From the repository root, restore, build, test and run:
 dotnet restore RewardFlow.SuppleDesign.slnx
 dotnet build RewardFlow.SuppleDesign.slnx --no-restore
 dotnet test RewardFlow.SuppleDesign.slnx --no-build
-dotnet run --project src/RewardFlow.SuppleDesign.Presentation
+dotnet run --project src/RewardFlow.SuppleDesign.Api
 ```
 
 > [!TIP]
@@ -108,7 +108,9 @@ The repository uses the XML-based `.slnx` solution format. No database, credenti
 
 ### Try the wallet flow
 
-Open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Presentation/RewardFlow.http) in a compatible HTTP client, or expand the PowerShell walkthrough:
+Visual Studio 2022 17.11 or later also discovers the shared `RewardFlow API` startup profile from [`RewardFlow.SuppleDesign.slnLaunch`](RewardFlow.SuppleDesign.slnLaunch) when the solution is opened.
+
+Open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) in a compatible HTTP client, or expand the PowerShell walkthrough:
 
 <details>
 <summary><strong>PowerShell: open, credit, debit and inspect a wallet</strong></summary>
@@ -162,7 +164,7 @@ Wallet IDs must be non-empty GUIDs. All wallets are opened explicitly; queries a
 flowchart LR
     Client([HTTP Client<br/>Swagger / Integration Tests])
 
-    subgraph Presentation["Presentation · Primary Adapter"]
+    subgraph Api["API · Primary Adapter"]
         direction TB
         Controller["WalletsController<br/>Routes · Validation · Status Codes"]
         DTOs["Request / Response DTOs<br/>Problem Details"]
@@ -219,7 +221,7 @@ The solid arrows show request flow and domain collaboration. The dashed arrows s
 
 The repository interface is owned by Domain as the requested outbound port. Application owns the inbound use-case interfaces. `IRewardsWallet` is the business behavior contract implemented by the aggregate, rather than a transport or persistence abstraction. The controllers receive the application interfaces through constructor injection.
 
-Domain has no project or package references. Application and Infrastructure reference Domain independently. Infrastructure does not know about HTTP, and Application does not reference Infrastructure. Presentation references Infrastructure only to select the concrete adapter in the composition root. Domain objects are never serialized directly as HTTP contracts.
+Domain has no project or package references. Application and Infrastructure reference Domain independently. Infrastructure does not know about HTTP, and Application does not reference Infrastructure. API references Infrastructure only to select the concrete adapter in the composition root. Domain objects are never serialized directly as HTTP contracts.
 
 ## Project structure
 
@@ -228,6 +230,7 @@ The folders are architectural boundaries rather than technical buckets. Each pro
 ```text
 RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
+├── RewardFlow.SuppleDesign.slnLaunch              # Shared Visual Studio startup profile
 ├── Directory.Build.props                         # Shared .NET 8 build settings
 ├── README.md
 │
@@ -260,7 +263,7 @@ RewardFlow.SuppleDesign/
 │   │   │   └── InMemoryRewardsWalletRepository.cs
 │   │   └── RewardFlow.SuppleDesign.Infrastructure.csproj
 │   │
-│   └── RewardFlow.SuppleDesign.Presentation/      # HTTP primary adapter
+│   └── RewardFlow.SuppleDesign.Api/               # HTTP primary adapter
 │       ├── Endpoints/
 │       │   └── Wallets/
 │       │       └── WalletsController.cs
@@ -274,7 +277,7 @@ RewardFlow.SuppleDesign/
 │       ├── Program.cs                             # Composition root
 │       ├── appsettings.json                       # Runtime and port configuration
 │       ├── RewardFlow.http                        # Executable HTTP examples
-│       └── RewardFlow.SuppleDesign.Presentation.csproj
+│       └── RewardFlow.SuppleDesign.Api.csproj
 │
 └── test/                                          # Executable specifications
     └── RewardFlow.SuppleDesign.Tests/
@@ -289,7 +292,7 @@ RewardFlow.SuppleDesign/
 | `RewardFlow.SuppleDesign.Domain` | Ubiquitous Language, invariants, aggregate behavior, value objects and outbound ports | Nothing |
 | `RewardFlow.SuppleDesign.Application` | Use-case ports and workflow coordination | Domain |
 | `RewardFlow.SuppleDesign.Infrastructure` | Replaceable implementations of outbound ports | Domain |
-| `RewardFlow.SuppleDesign.Presentation` | HTTP endpoints, API contracts, error translation and dependency composition | Application and Infrastructure |
+| `RewardFlow.SuppleDesign.Api` | HTTP endpoints, API contracts, error translation and dependency composition | Application and Infrastructure |
 | `RewardFlow.SuppleDesign.Tests` | Executable examples across domain, application and HTTP boundaries | The system under test |
 
 ## Evans' model building blocks and RewardFlow
@@ -319,7 +322,7 @@ flowchart LR
         Repository["IRewardsWalletRepository<br/>+ InMemory Adapter"]
         UseCases["Application Use Cases<br/>Open · Credit · Debit · Balance"]
         Construction["Constructors<br/>Simple creation; no Factory needed"]
-        Layers["Domain · Application<br/>Infrastructure · Presentation"]
+        Layers["Domain · Application<br/>Infrastructure · API"]
         Controllers["Thin Controllers<br/>HTTP concerns only"]
     end
 
@@ -350,7 +353,7 @@ flowchart LR
 | Repository | `IRewardsWalletRepository` | The Domain owns the outbound port; `InMemoryRewardsWalletRepository` is a replaceable Infrastructure adapter. |
 | Service | Application use cases | The nearest parallel coordinates workflows. They are application services, not domain services: the business rules remain in `RewardsWallet` and `RewardPoints`. |
 | Factory | Constructors | Creation is simple enough to remain in constructors. A dedicated Factory would add ceremony without protecting a new invariant. |
-| Layered Architecture | Four projects | Domain is isolated; Application coordinates it; Infrastructure and Presentation are adapters around it. |
+| Layered Architecture | Four projects | Domain is isolated; Application coordinates it; Infrastructure and API are adapters around it. |
 | Smart UI | Deliberately absent | Controllers contain HTTP translation only. They do not own reward rules, which prevents the UI from becoming the domain model. |
 
 The original book image can sit immediately above this comparison as `docs/images/evans-model-driven-design.png`. Keep its caption and bibliographic attribution with the image; the Mermaid diagram remains the project-specific interpretation rather than a modified reproduction of the source figure.
@@ -403,7 +406,7 @@ Expected application/domain failures use `application/problem+json` with an addi
 }
 ```
 
-ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic request validation uses the framework's validation Problem Details with an `errors` collection. Exception-to-HTTP mapping lives exclusively in Presentation.
+ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic request validation uses the framework's validation Problem Details with an `errors` collection. Exception-to-HTTP mapping lives exclusively in the API project.
 
 ## Persistence and concurrency
 

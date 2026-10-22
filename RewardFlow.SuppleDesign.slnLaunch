@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "RewardFlow API",
+    "Projects": [
+      {
+        "Path": "src\\RewardFlow.SuppleDesign.Api\\RewardFlow.SuppleDesign.Api.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

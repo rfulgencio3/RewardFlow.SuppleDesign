@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using RewardFlow.SuppleDesign.Application.Wallets;
-using RewardFlow.SuppleDesign.Presentation.DTOs.Wallets;
+using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 
-namespace RewardFlow.SuppleDesign.Presentation.Endpoints.Wallets;
+namespace RewardFlow.SuppleDesign.Api.Endpoints.Wallets;
 
 /// <summary>Intention-Revealing Interfaces: HTTP primary adapter delegates business execution to application ports.</summary>
 [ApiController]
@@ -14,7 +14,7 @@ public sealed class WalletsController(
     IGetWalletBalance getBalance,
     ICheckWalletAffordability checkAffordability) : ControllerBase
 {
-    /// <summary>Intention-Revealing Interfaces: explicitly opens a wallet, returning its balance location.</summary>
+    /// <summary>Opens a rewards wallet with a zero balance.</summary>
     [HttpPost("{id:guid}")]
     public async Task<ActionResult<WalletBalanceResponse>> Open(Guid id, CancellationToken cancellationToken)
     {
@@ -22,7 +22,7 @@ public sealed class WalletsController(
         return CreatedAtAction(nameof(Balance), new { id }, new WalletBalanceResponse(result.WalletId, result.Points));
     }
 
-    /// <summary>Intention-Revealing Interfaces: credits earned reward points.</summary>
+    /// <summary>Credits earned points to a rewards wallet.</summary>
     [HttpPost("{id:guid}/credit")]
     public async Task<ActionResult<WalletBalanceResponse>> Credit(Guid id, PointsRequest request, CancellationToken cancellationToken)
     {
@@ -30,7 +30,7 @@ public sealed class WalletsController(
         return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
     }
 
-    /// <summary>Intention-Revealing Interfaces: debits redeemed reward points.</summary>
+    /// <summary>Debits redeemed points from a rewards wallet.</summary>
     [HttpPost("{id:guid}/debit")]
     public async Task<ActionResult<WalletBalanceResponse>> Debit(Guid id, PointsRequest request, CancellationToken cancellationToken)
     {
@@ -38,7 +38,7 @@ public sealed class WalletsController(
         return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
     }
 
-    /// <summary>Query: reads balance without creating or mutating a wallet.</summary>
+    /// <summary>Gets the current rewards wallet balance.</summary>
     [HttpGet("{id:guid}/balance")]
     public async Task<ActionResult<WalletBalanceResponse>> Balance(Guid id, CancellationToken cancellationToken)
     {
@@ -46,7 +46,7 @@ public sealed class WalletsController(
         return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
     }
 
-    /// <summary>Exposes the wallet's side-effect-free affordability function without mutating its balance.</summary>
+    /// <summary>Checks whether the wallet can afford a points amount.</summary>
     [HttpGet("{id:guid}/can-afford")]
     public async Task<ActionResult<WalletAffordabilityResponse>> CanAfford(
         Guid id,

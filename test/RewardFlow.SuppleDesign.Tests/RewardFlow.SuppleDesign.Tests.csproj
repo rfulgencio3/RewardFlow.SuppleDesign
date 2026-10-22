@@ -8,7 +8,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.22" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
-    <ProjectReference Include="../../src/RewardFlow.SuppleDesign.Presentation/RewardFlow.SuppleDesign.Presentation.csproj" />
+    <ProjectReference Include="../../src/RewardFlow.SuppleDesign.Api/RewardFlow.SuppleDesign.Api.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
