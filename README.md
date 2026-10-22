@@ -15,7 +15,7 @@
 
 A runnable loyalty and reward-points API demonstrating the Supple Design patterns from Chapter 10 of Eric Evans' *Domain-Driven Design*.
 
-[Getting started](#run-and-verify) · [Architecture](#architecture-clean-architecture-and-hexagonal-ports) · [Supple Design](#how-the-code-applies-evans-supple-design-patterns) · [API contract](#http-contract-and-errors) · [Contributing](#contributing)
+[Getting started](#run-and-verify) · [Wallet actions](#how-to-perform-wallet-actions) · [Request flow](#how-a-request-flows-through-the-project) · [Architecture](#architecture-clean-architecture-and-hexagonal-ports) · [Supple Design](#how-the-code-applies-evans-supple-design-patterns) · [Contributing](#contributing)
 
 </div>
 
@@ -39,7 +39,9 @@ The goal is to make business code easy to read, reason about and change. Small, 
 
 - [Supple Design assessment](#supple-design-assessment)
 - [Run and verify](#run-and-verify)
+- [How to perform wallet actions](#how-to-perform-wallet-actions)
 - [Ubiquitous Language and rules](#ubiquitous-language-and-rules)
+- [How a request flows through the project](#how-a-request-flows-through-the-project)
 - [Architecture: Clean Architecture and Hexagonal Ports](#architecture-clean-architecture-and-hexagonal-ports)
 - [Project structure](#project-structure)
 - [Evans' model building blocks and RewardFlow](#evans-model-building-blocks-and-rewardflow)
@@ -81,13 +83,25 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 > [!TIP]
 > Open [http://localhost:5180/](http://localhost:5180/) after the API starts. The root redirects to Swagger UI, where every endpoint can be explored and executed. The raw OpenAPI document is available at `/swagger/v1/swagger.json`.
 
-The repository uses the XML-based `.slnx` solution format. No database, credentials or external services are required.
-
-### Try the wallet flow
-
 Visual Studio 2022 17.11 or later also discovers the shared `RewardFlow API` startup profile from [`RewardFlow.SuppleDesign.slnLaunch`](RewardFlow.SuppleDesign.slnLaunch) when the solution is opened.
 
-Open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) in a compatible HTTP client, or expand the PowerShell walkthrough:
+The repository uses the XML-based `.slnx` solution format. No database, credentials or external services are required.
+
+## How to perform wallet actions
+
+Start the API first, then choose one of these entry points: execute requests in Swagger at [http://localhost:5180/](http://localhost:5180/), open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) in a compatible HTTP client, or use the PowerShell walkthrough below.
+
+Use one wallet ID throughout a flow. A wallet must be opened before any command or query addresses it.
+
+| Goal | Request | Input | Expected result |
+| --- | --- | --- | --- |
+| Open a wallet | `POST /api/wallets/{id}` | A new non-empty GUID in the route | `201 Created`, zero points and a `Location` header for the balance |
+| Credit earned points | `POST /api/wallets/{id}/credit` | `{ "points": 100 }` | `200 OK` with the updated balance |
+| Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "points": 40 }` | `200 OK`, provided the wallet can afford the amount |
+| Read the balance | `GET /api/wallets/{id}/balance` | No body | `200 OK` with the current points |
+| Check affordability | `GET /api/wallets/{id}/can-afford?points=60` | Non-negative whole points in the query string | `200 OK` with `canAfford`; the balance is unchanged |
+
+The commands below create a wallet, credit 100 points, debit 40, confirm that 60 points are affordable and then demonstrate an overdraft rejection:
 
 <details>
 <summary><strong>PowerShell: open, credit, debit and inspect a wallet</strong></summary>
@@ -110,6 +124,9 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
     -ContentType 'application/json' -Body '{"points":40}'
 
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/balance"
+
+# Pure query: true, and the balance remains 60.
+Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?points=60"
 
 # Rejected: 422 Unprocessable Entity; balance remains 60.
 # PowerShell reports an HTTP error for this intentional failure.
@@ -134,6 +151,40 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 Wallet IDs must be non-empty GUIDs. All wallets are opened explicitly; queries and commands never silently create them. A credit or debit must contain at least one point. A balance may be zero, and debiting exactly the balance is valid. An empty wallet cannot fund a positive redemption. `CanAfford(RewardPoints.Zero)` is true, while a zero debit is rejected because a command must move points.
 
 `RewardPoints` uses `long` and accepts values from zero through `long.MaxValue`. Negative construction, subtraction below zero, and addition above the maximum are rejected with domain exceptions. Failed operations leave the original values and wallet balance intact. Record value equality lets two independently constructed equal point amounts compare equal.
+
+## How a request flows through the project
+
+The credit operation shows how the adapters and core collaborate without moving business rules into the controller or repository:
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant API as WalletsController
+    participant UseCase as ICreditRewardPoints
+    participant Repository as IRewardsWalletRepository
+    participant Wallet as RewardsWallet
+    participant Points as RewardPoints
+
+    Client->>API: POST /api/wallets/{id}/credit
+    API->>UseCase: ExecuteAsync(id, points)
+    UseCase->>Repository: FindAsync(id)
+    Repository-->>UseCase: detached WalletSnapshot
+    UseCase->>Wallet: Credit(earnedPoints)
+    Wallet->>Points: Add(earnedPoints)
+    Points-->>Wallet: new RewardPoints
+    UseCase->>Repository: TrySaveAsync(wallet, revision)
+    Repository-->>UseCase: saved
+    UseCase-->>API: WalletBalance
+    API-->>Client: 200 WalletBalanceResponse
+```
+
+1. `WalletsController` validates and translates the HTTP request, then calls the inbound application port.
+2. `CreditRewardPoints` coordinates the use case and asks the outbound repository port for a detached snapshot.
+3. `RewardsWallet.Credit` expresses the state change in domain language and delegates immutable arithmetic to `RewardPoints.Add`.
+4. The application saves with the loaded revision, so a concurrent update cannot be silently overwritten.
+5. The use case returns an application result, which the controller converts into an API response DTO.
+
+Debit follows the same command path. Balance and affordability are queries: they load a snapshot but never call `TrySaveAsync`; `CanAfford` does not mutate the aggregate. Known domain and application failures cross back to `ApiExceptionHandler`, which translates them into HTTP Problem Details at the outer boundary.
 
 ## Architecture: Clean Architecture and Hexagonal Ports
 
