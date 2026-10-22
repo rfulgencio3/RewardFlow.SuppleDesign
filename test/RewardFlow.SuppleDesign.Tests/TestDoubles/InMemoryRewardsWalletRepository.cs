@@ -3,10 +3,10 @@ using RewardFlow.SuppleDesign.Domain.Entities;
 using RewardFlow.SuppleDesign.Domain.Ports;
 using RewardFlow.SuppleDesign.Domain.ValueObjects;
 
-namespace RewardFlow.SuppleDesign.Infrastructure.Repositories;
+namespace RewardFlow.SuppleDesign.Tests.TestDoubles;
 
-/// <summary>Conceptual Contours: secondary adapter stores immutable records and returns detached aggregates.</summary>
-public sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
+/// <summary>Fast test double that preserves the repository port's detached-snapshot and concurrency semantics.</summary>
+internal sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
 {
     private sealed record StoredWallet(long Points, long Revision);
     private readonly ConcurrentDictionary<Guid, StoredWallet> wallets = new();

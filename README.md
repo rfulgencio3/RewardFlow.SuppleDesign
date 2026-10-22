@@ -31,7 +31,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 | Runtime | .NET 8 and ASP.NET Core Web API |
 | Domain | Loyalty wallet and reward points |
 | Architecture | Clean Architecture with Hexagonal Ports & Adapters |
-| Persistence | In-memory adapter with optimistic concurrency |
+| Persistence | PostgreSQL 17 through EF Core and Npgsql, with optimistic concurrency |
 | API discovery | Swagger UI and OpenAPI |
 | Verification | Domain, application and HTTP integration tests |
 
@@ -49,6 +49,8 @@ The goal is to make business code easy to read, reason about and change. Small, 
 - [Abstraction budget](#abstraction-budget)
 - [HTTP contract and errors](#http-contract-and-errors)
 - [Persistence and concurrency](#persistence-and-concurrency)
+- [Database schema (ERD)](#database-schema-erd)
+- [Migrations](#migrations)
 - [Tests](#tests)
 - [Source and further reading](#source-and-further-reading)
 - [Educational commentary disclaimer](#educational-commentary-disclaimer)
@@ -59,7 +61,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 > [!IMPORTANT]
 > **RewardFlow fulfills the purpose of Supple Design within the scope of an educational sample.** Its model speaks the language of rewards, protects invariants where the state lives, keeps queries and calculations predictable, and isolates business decisions from HTTP and persistence.
 
-The flexibility comes from explicit concepts and replaceable boundaries, not from speculative layers. The sample deliberately uses in-memory persistence and omits factories, domain services, messaging and other mechanisms without a concrete modeling need. The [pattern mapping](#how-the-code-applies-evans-supple-design-patterns) provides the code-level evidence; the [abstraction budget](#abstraction-budget) explains why each boundary exists and when it should be reconsidered.
+The flexibility comes from explicit concepts and replaceable boundaries, not from speculative layers. PostgreSQL is implemented as a secondary adapter while EF Core remains outside the Domain and Application projects. The sample still omits factories, domain services, messaging and other mechanisms without a concrete modeling need. The [pattern mapping](#how-the-code-applies-evans-supple-design-patterns) provides the code-level evidence; the [abstraction budget](#abstraction-budget) explains why each boundary exists and when it should be reconsidered.
 
 ---
 
@@ -67,13 +69,14 @@ The flexibility comes from explicit concepts and replaceable boundaries, not fro
 
 ### Prerequisites
 
-Install a .NET SDK with `.slnx` support (9.0.200 or later) and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; the API project uses Swashbuckle for Swagger and OpenAPI.
+Install Docker Desktop, a .NET SDK with `.slnx` support (9.0.200 or later), and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for EF Core, Npgsql, test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects remain free of third-party package dependencies.
 
 ### Start the API
 
 From the repository root, restore, build, test and run:
 
 ```powershell
+docker compose up -d --wait
 dotnet restore RewardFlow.SuppleDesign.slnx
 dotnet build RewardFlow.SuppleDesign.slnx --no-restore
 dotnet test RewardFlow.SuppleDesign.slnx --no-build
@@ -85,7 +88,7 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 
 Visual Studio 2022 17.11 or later also discovers the shared `RewardFlow API` startup profile from [`RewardFlow.SuppleDesign.slnLaunch`](RewardFlow.SuppleDesign.slnLaunch) when the solution is opened.
 
-The repository uses the XML-based `.slnx` solution format. No database, credentials or external services are required.
+Compose starts the pinned PostgreSQL image with the local development credentials from `compose.yaml`. The API applies pending EF Core migrations before accepting requests, so the first start creates the schema automatically. Wallets remain available across API restarts because PostgreSQL stores them in the named Docker volume.
 
 ## How to perform wallet actions
 
@@ -222,14 +225,19 @@ flowchart LR
     end
 
     subgraph Infrastructure["Infrastructure · Secondary Adapter"]
-        Repository["InMemoryRewardsWalletRepository<br/>Detached Snapshots<br/>Optimistic Concurrency"]
+        Repository["PostgresRewardsWalletRepository<br/>Detached Snapshots<br/>Optimistic Concurrency"]
+        DbContext["RewardFlowDbContext<br/>EF Core Mapping · Migrations"]
+        Repository --> DbContext
     end
+
+    Database[(PostgreSQL 17<br/>Docker Volume)]
 
     Client -->|HTTP request| Controller
     Controller -->|calls inbound port| InboundPorts
     UseCases -->|invokes domain behavior| WalletPort
     UseCases -->|loads / saves| RepositoryPort
     Repository -.->|implements| RepositoryPort
+    DbContext -->|Npgsql| Database
     Composition -.->|binds ports to adapters| InboundPorts
     Composition -.-> Repository
 
@@ -238,8 +246,8 @@ flowchart LR
     classDef application fill:#fff3e0,stroke:#ef6c00,color:#e65100
     classDef domain fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
     classDef port fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
-    class Client external
-    class Controller,DTOs,Composition,Repository adapter
+    class Client,Database external
+    class Controller,DTOs,Composition,Repository,DbContext adapter
     class UseCases application
     class Wallet,Points,Rules domain
     class InboundPorts,WalletPort,RepositoryPort port
@@ -260,6 +268,8 @@ RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
 ├── RewardFlow.SuppleDesign.slnLaunch              # Shared Visual Studio startup profile
 ├── Directory.Build.props                         # Shared .NET 8 build settings
+├── compose.yaml                                  # Local PostgreSQL 17 container and volume
+├── dotnet-tools.json                             # Reproducible EF Core CLI version
 ├── README.md
 │
 ├── src/                                           # Production code
@@ -287,8 +297,15 @@ RewardFlow.SuppleDesign/
 │   │   └── RewardFlow.SuppleDesign.Application.csproj
 │   │
 │   ├── RewardFlow.SuppleDesign.Infrastructure/    # Secondary adapters
+│   │   ├── Persistence/
+│   │   │   ├── Configurations/                    # Fluent EF Core mapping
+│   │   │   ├── Migrations/                        # Versioned PostgreSQL schema
+│   │   │   ├── Models/                            # Persistence-only records
+│   │   │   ├── RewardFlowDbContext.cs
+│   │   │   └── RewardFlowDbContextFactory.cs      # Migration tooling
 │   │   ├── Repositories/
-│   │   │   └── InMemoryRewardsWalletRepository.cs
+│   │   │   └── PostgresRewardsWalletRepository.cs
+│   │   ├── DependencyInjection.cs                 # Adapter registration and migration startup
 │   │   └── RewardFlow.SuppleDesign.Infrastructure.csproj
 │   │
 │   └── RewardFlow.SuppleDesign.Api/               # HTTP primary adapter
@@ -303,14 +320,17 @@ RewardFlow.SuppleDesign/
 │       ├── Properties/
 │       │   └── launchSettings.json
 │       ├── Program.cs                             # Composition root
-│       ├── appsettings.json                       # Runtime and port configuration
+│       ├── appsettings.json                       # Connection string and runtime configuration
 │       ├── RewardFlow.http                        # Executable HTTP examples
 │       └── RewardFlow.SuppleDesign.Api.csproj
 │
 └── test/                                          # Executable specifications
     └── RewardFlow.SuppleDesign.Tests/
+        ├── TestDoubles/
+        │   └── InMemoryRewardsWalletRepository.cs
         ├── DomainTests.cs
         ├── ApplicationTests.cs
+        ├── PostgresRepositoryTests.cs
         ├── WalletApiTests.cs
         └── RewardFlow.SuppleDesign.Tests.csproj
 ```
@@ -347,7 +367,7 @@ flowchart LR
         direction TB
         Wallet["RewardsWallet<br/>Entity + Aggregate Root"]
         Points["RewardPoints<br/>Immutable Value Object"]
-        Repository["IRewardsWalletRepository<br/>+ InMemory Adapter"]
+        Repository["IRewardsWalletRepository<br/>+ PostgreSQL Adapter"]
         UseCases["Application Use Cases<br/>Open · Credit · Debit · Balance · Affordability"]
         Construction["Constructors<br/>Simple creation; no Factory needed"]
         Layers["Domain · Application<br/>Infrastructure · API"]
@@ -378,7 +398,7 @@ flowchart LR
 | Entity | `RewardsWallet` | Has a stable `Guid` identity and behavior that changes its balance. |
 | Value Object | `RewardPoints` | Immutable, compared by value, self-validating and closed under `Add` and valid `Subtract` operations. |
 | Aggregate | `RewardsWallet` | Serves as the consistency boundary and root for credits, debits and affordability rules. |
-| Repository | `IRewardsWalletRepository` | The Domain owns the outbound port; `InMemoryRewardsWalletRepository` is a replaceable Infrastructure adapter. |
+| Repository | `IRewardsWalletRepository` | The Domain owns the outbound port; `PostgresRewardsWalletRepository` is an Infrastructure adapter, while tests use an in-memory double. |
 | Service | Application use cases | The nearest parallel coordinates workflows. They are application services, not domain services: the business rules remain in `RewardsWallet` and `RewardPoints`. |
 | Factory | Constructors | Creation is simple enough to remain in constructors. A dedicated Factory would add ceremony without protecting a new invariant. |
 | Layered Architecture | Four projects | Domain is isolated; Application coordinates it; Infrastructure and API are adapters around it. |
@@ -415,9 +435,10 @@ Supple Design favors code that exposes the model with the least machinery needed
 | `DomainAssertions` | Shares domain assertions used across `RewardPoints` and `RewardsWallet` while preserving domain-specific error codes. | A rule belongs to only one type; move it beside that state instead of growing a generic validation utility. |
 | Application use-case interfaces | Act as inbound ports so the HTTP controller depends on capabilities such as crediting and checking affordability, not concrete orchestration. | The application is no longer consumed through an adapter boundary, or several ports acquire identical semantics and can be combined without losing language. |
 | `WalletBalance` and `WalletAffordability` | Return application results without coupling use cases to HTTP DTOs or exposing mutable aggregates. | A result has exactly one consumer and no boundary-specific representation to isolate. |
-| `IRewardsWalletRepository` | Is the outbound persistence port; the current in-memory adapter can be replaced without changing domain or application code. | Storage is no longer replaceable or persistence behavior becomes part of a different consistency boundary. |
+| `IRewardsWalletRepository` | Is the outbound persistence port; PostgreSQL and the test double satisfy the same application contract. | Storage is no longer replaceable or persistence behavior becomes part of a different consistency boundary. |
 | `WalletSnapshot` and revision checks | Prevent concurrent commands from silently overwriting a balance loaded from an older revision. | The chosen store supplies an equivalent concurrency contract through a simpler port. |
 | `WalletPersistence` | Centralizes the repeated not-found and optimistic-save coordination shared by several use cases. | Only one caller remains or the shared workflow begins hiding different business decisions. |
+| `RewardFlowDbContext` and persistence models | Translate between relational storage and detached aggregates without adding EF Core annotations or tracking behavior to the Domain. | A different adapter replaces EF Core, or a mapping becomes simple enough to live entirely inside its repository. |
 | API DTOs and `ApiExceptionHandler` | Keep validation, serialization, status codes and Problem Details at the HTTP boundary. | The primary adapter changes; replace these contracts rather than leaking HTTP into the core. |
 
 The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
@@ -457,14 +478,56 @@ ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic req
 
 ## Persistence and concurrency
 
-The singleton in-memory adapter stores immutable point/revision records. Loading returns a detached aggregate snapshot: mutating it cannot alter stored state until saving succeeds. Opening is atomic. Saving uses an atomic compare-and-swap against the loaded revision, preventing two requests from silently overwriting each other or spending the same snapshot twice. A failed domain operation never reaches persistence.
+`PostgresRewardsWalletRepository` implements the domain-owned repository port through EF Core and Npgsql. The adapter maps a persistence-only `RewardsWalletState` to a fresh `RewardsWallet` and immutable `RewardPoints` on every load. The aggregate has no EF Core attributes, proxy requirements, navigation properties or persistence constructor.
+
+Opening inserts revision `0`; PostgreSQL's primary key makes duplicate opening atomic. Saving issues one conditional update matching both `id` and the expected `revision`, then increments the revision. If another command has already saved that snapshot, zero rows are updated and the application returns 409. A failed domain operation never reaches persistence.
 
 When two updates race, one can return 409. The client should reload the balance and reconsider/retry the operation. The demo does not automatically retry commands or implement idempotency keys. Repeating a successful credit/debit applies it again. A production adapter could implement the same revision contract with a database concurrency token and a transaction.
 
-> [!WARNING]
-> State exists only in the running process and is lost on restart. Separate instances do not share balances.
+The connection string is read from `ConnectionStrings:RewardFlow`. Local settings match `compose.yaml`; deployments can override it with the `ConnectionStrings__RewardFlow` environment variable. The checked-in password is only a local development credential.
 
-The sample does not include authentication, authorization, a ledger, member enrollment, reward expiration, durable storage, or transaction-wide integration events. Add those around the explicit business model and ports as requirements evolve. The local HTTP URL is for running the demo; deployment security is outside this example's scope.
+### Database schema (ERD)
+
+The domain currently needs one persistence table. `RewardPoints` is flattened into the `points` column because it is a value object owned by the wallet, while `revision` belongs to persistence coordination rather than to the aggregate.
+
+```mermaid
+erDiagram
+    REWARDS_WALLETS {
+        uuid id PK "aggregate identity"
+        bigint points "non-negative balance"
+        bigint revision "optimistic concurrency"
+    }
+```
+
+Both numeric columns have non-negative database check constraints. EF Core also creates `__EFMigrationsHistory`; it is tooling metadata and is intentionally omitted from the domain-oriented ERD.
+
+### Migrations
+
+The initial migration is versioned under `Infrastructure/Persistence/Migrations`. `Program.cs` calls `ApplyRewardFlowMigrationsAsync` before middleware is activated, and that adapter helper invokes `Database.MigrateAsync`. Applying the same migration again is safe because EF Core records completed migrations.
+
+To create a migration after changing only the persistence mapping:
+
+```powershell
+dotnet tool restore
+dotnet tool run dotnet-ef migrations add DescribeTheSchemaChange `
+    --project src/RewardFlow.SuppleDesign.Infrastructure/RewardFlow.SuppleDesign.Infrastructure.csproj `
+    --output-dir Persistence/Migrations
+```
+
+> [!CAUTION]
+> Runtime migration is intentional for this self-contained educational project. For production, inspect migrations and prefer a reviewed SQL script or migration bundle executed by the deployment process with dedicated schema permissions. The application identity should normally have only data read/write permissions.
+
+Useful local database commands:
+
+```powershell
+# Stop containers and retain wallet data.
+docker compose down
+
+# Delete the local database volume and start from an empty database.
+docker compose down --volumes
+```
+
+The sample does not include authentication, authorization, a ledger, member enrollment, reward expiration or transaction-wide integration events. Add those around the explicit business model and ports as requirements evolve. The local HTTP and database credentials are for running the demo; deployment security is outside this example's scope.
 
 ## Tests
 
@@ -474,9 +537,10 @@ The xUnit suite covers:
 - Exact-balance redemption, zero-balance protection, empty identity, and rejected mutations preserving state.
 - Repeated affordability queries preserving the same balance reference.
 - Open/credit/debit/read orchestration, missing-wallet reads, duplicate IDs, cancellation, detached snapshots, and stale-write rejection.
+- PostgreSQL mapping, startup migration, durable API persistence and conditional revision updates through the real adapter.
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 
-Every HTTP test uses fresh wallet identities. `dotnet test RewardFlow.SuppleDesign.slnx` builds and executes the suite without starting an external server or needing a database.
+Every database test uses fresh wallet identities. Start PostgreSQL with `docker compose up -d --wait`; `dotnet test RewardFlow.SuppleDesign.slnx` then builds the solution, applies pending migrations and executes the suite without starting an external HTTP server. Application tests use the in-memory repository only as a fast test double for the same port semantics.
 
 ## Source and further reading
 
@@ -490,6 +554,8 @@ This project is inspired by Eric Evans' *Domain-Driven Design: Tackling Complexi
 | [Official book page — InformIT](https://www.informit.com/store/domain-driven-design-tackling-complexity-in-the-heart-9780321125217) | Description, publication details and purchase options |
 | [Chapter 10: Supple Design — O'Reilly Learning](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) | The chapter catalog and reading page; full access may require a subscription or purchased copy |
 | [DDD Reference — Domain Language](https://www.domainlanguage.com/ddd/reference/) | Eric Evans' free companion summary of the book's definitions and patterns |
+| [Npgsql EF Core provider](https://www.npgsql.org/efcore/) | PostgreSQL provider configuration and EF Core integration |
+| [Applying EF Core migrations](https://learn.microsoft.com/ef/core/managing-schemas/migrations/applying) | Migration deployment strategies and runtime-migration trade-offs |
 
 ## Educational commentary disclaimer
 

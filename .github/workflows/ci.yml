@@ -12,7 +12,22 @@ permissions:
 jobs:
   build-and-test:
     name: Build and test
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17.11-alpine3.23
+        env:
+          POSTGRES_DB: rewardflow
+          POSTGRES_USER: rewardflow
+          POSTGRES_PASSWORD: rewardflow_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rewardflow -d rewardflow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Check out repository

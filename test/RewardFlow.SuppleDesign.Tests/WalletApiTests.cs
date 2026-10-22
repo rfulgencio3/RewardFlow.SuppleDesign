@@ -7,6 +7,7 @@ using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 namespace RewardFlow.SuppleDesign.Tests;
 
 /// <summary>Verifies the HTTP primary adapter, composition root and Problem Details boundary.</summary>
+[Collection(PostgresDatabaseCollection.Name)]
 public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> factory;

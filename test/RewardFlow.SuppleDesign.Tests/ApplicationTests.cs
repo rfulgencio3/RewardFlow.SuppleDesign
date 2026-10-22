@@ -1,7 +1,7 @@
 using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Domain.Exceptions;
 using RewardFlow.SuppleDesign.Domain.ValueObjects;
-using RewardFlow.SuppleDesign.Infrastructure.Repositories;
+using RewardFlow.SuppleDesign.Tests.TestDoubles;
 
 namespace RewardFlow.SuppleDesign.Tests;
 
