@@ -35,68 +35,29 @@ The goal is to make business code easy to read, reason about and change. Small, 
 | API discovery | Swagger UI and OpenAPI |
 | Verification | Domain, application and HTTP integration tests |
 
-## Does this project fulfill the purpose of Supple Design?
-
-**Yes—within the scope of an educational sample.** The domain model communicates the language of rewards directly, keeps calculations predictable and separates business decisions from HTTP and persistence concerns. Its flexibility comes from clear concepts and replaceable boundaries, rather than from adding abstractions before the domain needs them.
-
-| Design quality | Evidence in RewardFlow |
-| --- | --- |
-| Reveals intent | `Credit`, `Debit` and `CanAfford` express the Ubiquitous Language. |
-| Protects invariants | `DomainAssertions`, `RewardPoints` and `RewardsWallet` reject invalid states at the domain boundary. |
-| Keeps reasoning local | Point arithmetic stays in `RewardPoints`; wallet lifecycle and balance changes stay in `RewardsWallet`. |
-| Avoids hidden effects | `CanAfford` answers a question without changing the wallet, while commands make mutations explicit. |
-| Supports change | Application ports isolate use cases, and repository and HTTP adapters can be replaced without moving business rules out of the Domain. |
-
-The sample deliberately remains small: it uses in-memory persistence and does not add factories, domain services, messaging or other mechanisms without a concrete modeling need. Those limits keep the design supple and readable; production concerns can be introduced when a real requirement justifies them. See [How the code applies Evans' Supple Design patterns](#how-the-code-applies-evans-supple-design-patterns) for the detailed code mapping.
-
 ## Table of contents
 
-- [Does this project fulfill the purpose of Supple Design?](#does-this-project-fulfill-the-purpose-of-supple-design)
-- [Source and further reading](#source-and-further-reading)
-- [Educational commentary disclaimer](#educational-commentary-disclaimer)
+- [Supple Design assessment](#supple-design-assessment)
 - [Run and verify](#run-and-verify)
 - [Ubiquitous Language and rules](#ubiquitous-language-and-rules)
 - [Architecture: Clean Architecture and Hexagonal Ports](#architecture-clean-architecture-and-hexagonal-ports)
 - [Project structure](#project-structure)
-- [Abstraction budget](#abstraction-budget)
 - [Evans' model building blocks and RewardFlow](#evans-model-building-blocks-and-rewardflow)
 - [How the code applies Evans' Supple Design patterns](#how-the-code-applies-evans-supple-design-patterns)
+- [Abstraction budget](#abstraction-budget)
 - [HTTP contract and errors](#http-contract-and-errors)
 - [Persistence and concurrency](#persistence-and-concurrency)
 - [Tests](#tests)
+- [Source and further reading](#source-and-further-reading)
+- [Educational commentary disclaimer](#educational-commentary-disclaimer)
 - [Contributing](#contributing)
 
----
-
-## Source and further reading
-
-This project is inspired by Eric Evans' *Domain-Driven Design: Tackling Complexity in the Heart of Software* (Addison-Wesley, 2003, ISBN `978-0-321-12521-7`).
+## Supple Design assessment
 
 > [!IMPORTANT]
-> The main reference is **Part III, Chapter 10 — “Supple Design.”** It connects deep modeling with code that is clear to use, predictable to change and suitable for continuous refactoring.
+> **RewardFlow fulfills the purpose of Supple Design within the scope of an educational sample.** Its model speaks the language of rewards, protects invariants where the state lives, keeps queries and calculations predictable, and isolates business decisions from HTTP and persistence.
 
-| Resource | Use it for |
-| --- | --- |
-| [Official book page — InformIT](https://www.informit.com/store/domain-driven-design-tackling-complexity-in-the-heart-9780321125217) | Description, publication details and purchase options |
-| [Chapter 10: Supple Design — O'Reilly Learning](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) | The chapter catalog and reading page; full access may require a subscription or purchased copy |
-| [DDD Reference — Domain Language](https://www.domainlanguage.com/ddd/reference/) | Eric Evans' free companion summary of the book's definitions and patterns |
-
-## Educational commentary disclaimer
-
-> [!NOTE]
-> This repository is intentionally more heavily commented than typical production code. The XML documentation names the pattern being demonstrated, explains the design decision and helps readers connect implementation details with the underlying DDD concepts. In a production codebase, comments should usually explain non-obvious intent and trade-offs rather than restate the code.
-
-The central domain types include XML `<seealso>` references that IDEs can present as navigable documentation links:
-
-| Code | Teaching focus | Reference |
-| --- | --- | --- |
-| [`RewardPoints`](src/RewardFlow.SuppleDesign.Domain/ValueObjects/RewardPoints.cs) | Standalone Class, Closure of Operations and Side-Effect-Free Functions | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
-| [`IRewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWallet.cs) | Intention-Revealing Interfaces | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
-| [`DomainAssertions`](src/RewardFlow.SuppleDesign.Domain/DomainAssertions.cs) | Assertions and explicit invariants | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
-| [`RewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Entities/RewardsWallet.cs) | Conceptual Contours, Entity and Aggregate Root | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
-| [`IRewardsWalletRepository`](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWalletRepository.cs) | Repository as an outbound domain port | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
-
-These links are study aids, not claims that this sample is the only valid implementation of Evans' ideas. The design choices are adaptations for a small C# API and should be reconsidered as domain complexity grows.
+The flexibility comes from explicit concepts and replaceable boundaries, not from speculative layers. The sample deliberately uses in-memory persistence and omits factories, domain services, messaging and other mechanisms without a concrete modeling need. The [pattern mapping](#how-the-code-applies-evans-supple-design-patterns) provides the code-level evidence; the [abstraction budget](#abstraction-budget) explains why each boundary exists and when it should be reconsidered.
 
 ---
 
@@ -311,25 +272,6 @@ RewardFlow.SuppleDesign/
 | `RewardFlow.SuppleDesign.Api` | HTTP endpoints, API contracts, error translation and dependency composition | Application and Infrastructure |
 | `RewardFlow.SuppleDesign.Tests` | Executable examples across domain, application and HTTP boundaries | The system under test |
 
-## Abstraction budget
-
-Supple Design favors code that exposes the model with the least machinery needed to protect it. Every abstraction in this sample therefore needs a current reason to exist and a clear condition under which it should be reconsidered.
-
-| Abstraction | Why it exists now | Reconsider it when |
-| --- | --- | --- |
-| `RewardPoints` | Gives point arithmetic, range checks and value equality one domain home instead of scattering primitive `long` operations. | Points no longer have behavior or invariants beyond the primitive value. |
-| `RewardsWallet` | Defines the consistency boundary for identity, balance and credit/debit behavior. | Wallet behavior separates into independently consistent concepts. |
-| `IRewardsWallet` | Names the small domain role required to demonstrate an intention-revealing interface. It is not presented as a persistence or DI seam, and `RewardsWallet` is its only implementation. | The teaching goal no longer needs the explicit role contract, or a real second domain implementation changes its shape. |
-| `DomainAssertions` | Shares domain assertions used across `RewardPoints` and `RewardsWallet` while preserving domain-specific error codes. | A rule belongs to only one type; move it beside that state instead of growing a generic validation utility. |
-| Application use-case interfaces | Act as inbound ports so the HTTP controller depends on capabilities such as crediting and checking affordability, not concrete orchestration. | The application is no longer consumed through an adapter boundary, or several ports acquire identical semantics and can be combined without losing language. |
-| `WalletBalance` and `WalletAffordability` | Return application results without coupling use cases to HTTP DTOs or exposing mutable aggregates. | A result has exactly one consumer and no boundary-specific representation to isolate. |
-| `IRewardsWalletRepository` | Is the outbound persistence port; the current in-memory adapter can be replaced without changing domain or application code. | Storage is no longer replaceable or persistence behavior becomes part of a different consistency boundary. |
-| `WalletSnapshot` and revision checks | Prevent concurrent commands from silently overwriting a balance loaded from an older revision. | The chosen store supplies an equivalent concurrency contract through a simpler port. |
-| `WalletPersistence` | Centralizes the repeated not-found and optimistic-save coordination shared by several use cases. | Only one caller remains or the shared workflow begins hiding different business decisions. |
-| API DTOs and `ApiExceptionHandler` | Keep validation, serialization, status codes and Problem Details at the HTTP boundary. | The primary adapter changes; replace these contracts rather than leaking HTTP into the core. |
-
-The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
-
 ## Evans' model building blocks and RewardFlow
 
 The supplied book figure presents Evans' broader **Model-Driven Design building blocks**. It complements Chapter 10, but it is not itself the Supple Design pattern diagram: Entities, Value Objects, Aggregates, Repositories, Services and Factories are tactical building blocks; Intention-Revealing Interfaces, Side-Effect-Free Functions, Assertions, Conceptual Contours, Standalone Classes and Closure of Operations make that model supple.
@@ -355,7 +297,7 @@ flowchart LR
         Wallet["RewardsWallet<br/>Entity + Aggregate Root"]
         Points["RewardPoints<br/>Immutable Value Object"]
         Repository["IRewardsWalletRepository<br/>+ InMemory Adapter"]
-        UseCases["Application Use Cases<br/>Open · Credit · Debit · Balance"]
+        UseCases["Application Use Cases<br/>Open · Credit · Debit · Balance · Affordability"]
         Construction["Constructors<br/>Simple creation; no Factory needed"]
         Layers["Domain · Application<br/>Infrastructure · API"]
         Controllers["Thin Controllers<br/>HTTP concerns only"]
@@ -391,7 +333,7 @@ flowchart LR
 | Layered Architecture | Four projects | Domain is isolated; Application coordinates it; Infrastructure and API are adapters around it. |
 | Smart UI | Deliberately absent | Controllers contain HTTP translation only. They do not own reward rules, which prevents the UI from becoming the domain model. |
 
-The original book image can sit immediately above this comparison as `docs/images/evans-model-driven-design.png`. Keep its caption and bibliographic attribution with the image; the Mermaid diagram remains the project-specific interpretation rather than a modified reproduction of the source figure.
+The Mermaid diagram is a project-specific interpretation of the model-building blocks described by Evans; it is not a reproduction of a figure from the book. The bibliographic links in [Source and further reading](#source-and-further-reading) point readers to the original material.
 
 ## How the code applies Evans' Supple Design patterns
 
@@ -409,6 +351,25 @@ Chapter 10 moves from identifying domain building blocks to shaping code that co
 For example, `new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new RewardPoints(40))` yields 85 points and leaves every operand unchanged. `RewardsWallet.Credit` delegates to that arithmetic and replaces its balance only after validation succeeds. `CanAfford` performs no writes, calls no external service, and has no clock or randomness dependency.
 
 XML comments above public classes, interfaces, and methods identify the relevant patterns. Implementations use `<inheritdoc />` where the interface already describes the behavior. These patterns reinforce one another; the comments explain design intent rather than claim every I/O operation is a pure function.
+
+## Abstraction budget
+
+Supple Design favors code that exposes the model with the least machinery needed to protect it. Every abstraction in this sample therefore needs a current reason to exist and a clear condition under which it should be reconsidered.
+
+| Abstraction | Why it exists now | Reconsider it when |
+| --- | --- | --- |
+| `RewardPoints` | Gives point arithmetic, range checks and value equality one domain home instead of scattering primitive `long` operations. | Points no longer have behavior or invariants beyond the primitive value. |
+| `RewardsWallet` | Defines the consistency boundary for identity, balance and credit/debit behavior. | Wallet behavior separates into independently consistent concepts. |
+| `IRewardsWallet` | Names the small domain role required to demonstrate an intention-revealing interface. It is not presented as a persistence or DI seam, and `RewardsWallet` is its only implementation. | The teaching goal no longer needs the explicit role contract, or a real second domain implementation changes its shape. |
+| `DomainAssertions` | Shares domain assertions used across `RewardPoints` and `RewardsWallet` while preserving domain-specific error codes. | A rule belongs to only one type; move it beside that state instead of growing a generic validation utility. |
+| Application use-case interfaces | Act as inbound ports so the HTTP controller depends on capabilities such as crediting and checking affordability, not concrete orchestration. | The application is no longer consumed through an adapter boundary, or several ports acquire identical semantics and can be combined without losing language. |
+| `WalletBalance` and `WalletAffordability` | Return application results without coupling use cases to HTTP DTOs or exposing mutable aggregates. | A result has exactly one consumer and no boundary-specific representation to isolate. |
+| `IRewardsWalletRepository` | Is the outbound persistence port; the current in-memory adapter can be replaced without changing domain or application code. | Storage is no longer replaceable or persistence behavior becomes part of a different consistency boundary. |
+| `WalletSnapshot` and revision checks | Prevent concurrent commands from silently overwriting a balance loaded from an older revision. | The chosen store supplies an equivalent concurrency contract through a simpler port. |
+| `WalletPersistence` | Centralizes the repeated not-found and optimistic-save coordination shared by several use cases. | Only one caller remains or the shared workflow begins hiding different business decisions. |
+| API DTOs and `ApiExceptionHandler` | Keep validation, serialization, status codes and Problem Details at the HTTP boundary. | The primary adapter changes; replace these contracts rather than leaking HTTP into the core. |
+
+The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
 
 ## HTTP contract and errors
 
@@ -465,6 +426,36 @@ The xUnit suite covers:
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 
 Every HTTP test uses fresh wallet identities. `dotnet test RewardFlow.SuppleDesign.slnx` builds and executes the suite without starting an external server or needing a database.
+
+## Source and further reading
+
+This project is inspired by Eric Evans' *Domain-Driven Design: Tackling Complexity in the Heart of Software* (Addison-Wesley, 2003, ISBN `978-0-321-12521-7`).
+
+> [!IMPORTANT]
+> The main reference is **Part III, Chapter 10 — “Supple Design.”** It connects deep modeling with code that is clear to use, predictable to change and suitable for continuous refactoring.
+
+| Resource | Use it for |
+| --- | --- |
+| [Official book page — InformIT](https://www.informit.com/store/domain-driven-design-tackling-complexity-in-the-heart-9780321125217) | Description, publication details and purchase options |
+| [Chapter 10: Supple Design — O'Reilly Learning](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) | The chapter catalog and reading page; full access may require a subscription or purchased copy |
+| [DDD Reference — Domain Language](https://www.domainlanguage.com/ddd/reference/) | Eric Evans' free companion summary of the book's definitions and patterns |
+
+## Educational commentary disclaimer
+
+> [!NOTE]
+> This repository is intentionally more heavily commented than typical production code. The XML documentation names the pattern being demonstrated, explains the design decision and helps readers connect implementation details with the underlying DDD concepts. In a production codebase, comments should usually explain non-obvious intent and trade-offs rather than restate the code.
+
+The central domain types include XML `<seealso>` references that IDEs can present as navigable documentation links:
+
+| Code | Teaching focus | Reference |
+| --- | --- | --- |
+| [`RewardPoints`](src/RewardFlow.SuppleDesign.Domain/ValueObjects/RewardPoints.cs) | Standalone Class, Closure of Operations and Side-Effect-Free Functions | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [`IRewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWallet.cs) | Intention-Revealing Interfaces | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [`DomainAssertions`](src/RewardFlow.SuppleDesign.Domain/DomainAssertions.cs) | Assertions and explicit invariants | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [`RewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Entities/RewardsWallet.cs) | Conceptual Contours, Entity and Aggregate Root | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
+| [`IRewardsWalletRepository`](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWalletRepository.cs) | Repository as an outbound domain port | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
+
+These links are study aids, not claims that this sample is the only valid implementation of Evans' ideas. The design choices are adaptations for a small C# API and should be reconsidered as domain complexity grows.
 
 ## Contributing
 
