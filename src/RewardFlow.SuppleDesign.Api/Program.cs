@@ -1,10 +1,11 @@
 using Microsoft.OpenApi.Models;
 using RewardFlow.SuppleDesign.Application.Wallets;
-using RewardFlow.SuppleDesign.Domain.Ports;
-using RewardFlow.SuppleDesign.Infrastructure.Repositories;
 using RewardFlow.SuppleDesign.Api.Errors;
+using RewardFlow.SuppleDesign.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
+var connectionString = builder.Configuration.GetConnectionString("RewardFlow")
+    ?? throw new InvalidOperationException("Connection string 'RewardFlow' is required.");
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -20,7 +21,7 @@ builder.Services.AddSwaggerGen(options =>
 });
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-builder.Services.AddSingleton<IRewardsWalletRepository, InMemoryRewardsWalletRepository>();
+builder.Services.AddRewardFlowPersistence(connectionString);
 builder.Services.AddScoped<IOpenRewardsWallet, OpenRewardsWallet>();
 builder.Services.AddScoped<ICreditRewardPoints, CreditRewardPoints>();
 builder.Services.AddScoped<IDebitRewardPoints, DebitRewardPoints>();
@@ -28,6 +29,7 @@ builder.Services.AddScoped<IGetWalletBalance, GetWalletBalance>();
 builder.Services.AddScoped<ICheckWalletAffordability, CheckWalletAffordability>();
 
 var app = builder.Build();
+await app.Services.ApplyRewardFlowMigrationsAsync();
 app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI(options =>

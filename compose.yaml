@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17.11-alpine3.23
+    environment:
+      POSTGRES_DB: rewardflow
+      POSTGRES_USER: rewardflow
+      POSTGRES_PASSWORD: rewardflow_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - rewardflow-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rewardflow -d rewardflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  rewardflow-postgres:
