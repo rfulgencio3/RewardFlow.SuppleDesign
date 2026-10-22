@@ -13,3 +13,10 @@ public sealed class PointsRequest
 
 /// <summary>Conceptual Contours: public HTTP balance contract independent of domain entities.</summary>
 public sealed record WalletBalanceResponse(Guid WalletId, long Points);
+
+/// <summary>HTTP response for a prospective reward redemption query.</summary>
+public sealed record WalletAffordabilityResponse(
+    Guid WalletId,
+    long Balance,
+    long RequiredPoints,
+    bool CanAfford);

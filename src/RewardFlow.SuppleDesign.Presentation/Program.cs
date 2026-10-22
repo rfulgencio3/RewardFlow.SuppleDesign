@@ -18,6 +18,7 @@ builder.Services.AddScoped<IOpenRewardsWallet, OpenRewardsWallet>();
 builder.Services.AddScoped<ICreditRewardPoints, CreditRewardPoints>();
 builder.Services.AddScoped<IDebitRewardPoints, DebitRewardPoints>();
 builder.Services.AddScoped<IGetWalletBalance, GetWalletBalance>();
+builder.Services.AddScoped<ICheckWalletAffordability, CheckWalletAffordability>();
 
 var app = builder.Build();
 app.UseExceptionHandler();

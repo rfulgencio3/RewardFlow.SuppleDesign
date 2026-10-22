@@ -11,7 +11,8 @@ public sealed class WalletsController(
     IOpenRewardsWallet openWallet,
     ICreditRewardPoints creditPoints,
     IDebitRewardPoints debitPoints,
-    IGetWalletBalance getBalance) : ControllerBase
+    IGetWalletBalance getBalance,
+    ICheckWalletAffordability checkAffordability) : ControllerBase
 {
     /// <summary>Intention-Revealing Interfaces: explicitly opens a wallet, returning its balance location.</summary>
     [HttpPost("{id:guid}")]
@@ -37,11 +38,29 @@ public sealed class WalletsController(
         return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
     }
 
-    /// <summary>Side-Effect-Free Functions: reads balance without creating or mutating a wallet.</summary>
+    /// <summary>Query: reads balance without creating or mutating a wallet.</summary>
     [HttpGet("{id:guid}/balance")]
     public async Task<ActionResult<WalletBalanceResponse>> Balance(Guid id, CancellationToken cancellationToken)
     {
         var result = await getBalance.ExecuteAsync(id, cancellationToken);
         return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
+    }
+
+    /// <summary>Exposes the wallet's side-effect-free affordability function without mutating its balance.</summary>
+    [HttpGet("{id:guid}/can-afford")]
+    public async Task<ActionResult<WalletAffordabilityResponse>> CanAfford(
+        Guid id,
+        [FromQuery,
+         Microsoft.AspNetCore.Mvc.ModelBinding.BindRequired,
+         System.ComponentModel.DataAnnotations.Range(typeof(long), "0", "9223372036854775807")]
+        long points,
+        CancellationToken cancellationToken)
+    {
+        var result = await checkAffordability.ExecuteAsync(id, points, cancellationToken);
+        return Ok(new WalletAffordabilityResponse(
+            result.WalletId,
+            result.Balance,
+            result.RequiredPoints,
+            result.CanAfford));
     }
 }

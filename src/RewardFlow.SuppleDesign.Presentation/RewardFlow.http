@@ -19,6 +19,9 @@ Content-Type: application/json
 ### Check the balance (60 after the preceding requests)
 GET {{host}}/api/wallets/{{wallet}}/balance
 
+### Check affordability without changing the balance
+GET {{host}}/api/wallets/{{wallet}}/can-afford?points=60
+
 ### Rejected overdraft (422; balance stays 60)
 POST {{host}}/api/wallets/{{wallet}}/debit
 Content-Type: application/json
