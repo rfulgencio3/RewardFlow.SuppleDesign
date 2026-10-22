@@ -9,7 +9,7 @@ public sealed record WalletSnapshot(RewardsWallet Wallet, long Revision);
 /// <seealso href="https://www.domainlanguage.com/ddd/reference/">Eric Evans' DDD Reference: Repositories</seealso>
 public interface IRewardsWalletRepository
 {
-    /// <summary>Side-Effect-Free Functions: loads an isolated wallet snapshot, or null when absent.</summary>
+    /// <summary>Repository query: loads an isolated wallet snapshot, or null when absent.</summary>
     Task<WalletSnapshot?> FindAsync(Guid walletId, CancellationToken cancellationToken = default);
     /// <summary>Intention-Revealing Interfaces: adds a wallet only if its identity is unused.</summary>
     Task<bool> TryAddAsync(RewardsWallet wallet, CancellationToken cancellationToken = default);

@@ -58,8 +58,29 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal("insufficient_points", problem.GetProperty("code").GetString());
         var balance = await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance");
         Assert.Equal(60, balance!.Points);
+
+        var affordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?points=60");
+        Assert.True(affordable!.CanAfford);
+        Assert.Equal(60, affordable.Balance);
+        Assert.Equal(60, affordable.RequiredPoints);
+
+        var unaffordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?points=61");
+        Assert.False(unaffordable!.CanAfford);
+        Assert.Equal(60, (await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance"))!.Points);
+
         Assert.Equal(HttpStatusCode.NotFound,
             (await client.GetAsync($"/api/wallets/{Guid.NewGuid()}/balance")).StatusCode);
+    }
+
+    /// <summary>HTTP validation: affordability requires an explicit non-negative whole-point amount.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("?points=-1")]
+    [InlineData("?points=1.5")]
+    public async Task InvalidAffordabilityQueryReturnsBadRequest(string query)
+    {
+        var response = await client.GetAsync($"/api/wallets/{Guid.NewGuid()}/can-afford{query}");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>Conceptual Contours: malformed HTTP contracts are rejected before domain execution.</summary>

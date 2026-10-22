@@ -17,6 +17,8 @@ public sealed class ApplicationTests
         Assert.Equal(0, (await new OpenRewardsWallet(repository).ExecuteAsync(id)).Points);
         Assert.Equal(120, (await new CreditRewardPoints(repository).ExecuteAsync(id, 120)).Points);
         Assert.Equal(100, (await new DebitRewardPoints(repository).ExecuteAsync(id, 20)).Points);
+        Assert.True((await new CheckWalletAffordability(repository).ExecuteAsync(id, 100)).CanAfford);
+        Assert.False((await new CheckWalletAffordability(repository).ExecuteAsync(id, 101)).CanAfford);
         await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository).ExecuteAsync(id, 101));
         Assert.Equal(100, (await new GetWalletBalance(repository).ExecuteAsync(id)).Points);
         await Assert.ThrowsAsync<WalletConflictException>(() => new OpenRewardsWallet(repository).ExecuteAsync(id));

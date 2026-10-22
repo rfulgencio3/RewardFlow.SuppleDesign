@@ -87,7 +87,7 @@ These links are study aids, not claims that this sample is the only valid implem
 
 ### Prerequisites
 
-Install the .NET 8 SDK or a later SDK capable of targeting .NET 8, plus the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages and, when necessary, .NET 8 targeting packs. Production projects have no third-party package dependencies.
+Install the .NET 8 SDK or a later SDK capable of targeting .NET 8, plus the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; Presentation uses Swashbuckle for Swagger and OpenAPI.
 
 ### Start the API
 
@@ -171,8 +171,8 @@ flowchart LR
 
     subgraph Application["Application · Use Cases"]
         direction TB
-        InboundPorts["Inbound Ports<br/>IOpenRewardsWallet<br/>ICreditRewardPoints<br/>IDebitRewardPoints<br/>IGetWalletBalance"]
-        UseCases["Use Case Implementations<br/>Open · Credit · Debit · Get Balance"]
+        InboundPorts["Inbound Ports<br/>IOpenRewardsWallet<br/>ICreditRewardPoints<br/>IDebitRewardPoints<br/>IGetWalletBalance<br/>ICheckWalletAffordability"]
+        UseCases["Use Case Implementations<br/>Open · Credit · Debit · Balance · Affordability"]
         InboundPorts --> UseCases
     end
 
@@ -246,7 +246,12 @@ RewardFlow.SuppleDesign/
 │   │
 │   ├── RewardFlow.SuppleDesign.Application/       # Use-case orchestration
 │   │   ├── Wallets/
-│   │   │   └── WalletUseCases.cs                  # Commands, query, ports and results
+│   │   │   ├── Common/                            # Results, exceptions and persistence coordination
+│   │   │   ├── OpenWallet/
+│   │   │   ├── CreditPoints/
+│   │   │   ├── DebitPoints/
+│   │   │   ├── GetBalance/
+│   │   │   └── CheckAffordability/
 │   │   └── RewardFlow.SuppleDesign.Application.csproj
 │   │
 │   ├── RewardFlow.SuppleDesign.Infrastructure/    # Secondary adapters
@@ -374,6 +379,7 @@ XML comments above public classes, interfaces, and methods identify the relevant
 | POST | `/api/wallets/{id}/credit` | `{"points":100}` | 200 and updated balance |
 | POST | `/api/wallets/{id}/debit` | `{"points":40}` | 200 and updated balance |
 | GET | `/api/wallets/{id}/balance` | none | 200 and current balance |
+| GET | `/api/wallets/{id}/can-afford?points=60` | none | 200 and affordability result |
 
 The response body is `{"walletId":"<guid>","points":60}`. IDs in the route must parse as GUIDs; malformed GUID routes do not match and return 404. An all-zero GUID parses but violates a domain invariant and returns 422.
 
