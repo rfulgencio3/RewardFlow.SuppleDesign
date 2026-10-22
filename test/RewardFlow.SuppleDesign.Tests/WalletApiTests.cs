@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
-using RewardFlow.SuppleDesign.Presentation.DTOs.Wallets;
+using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 
 namespace RewardFlow.SuppleDesign.Tests;
 
@@ -33,7 +33,9 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal("/swagger", root.Headers.Location!.ToString());
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/swagger/index.html")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/swagger/v1/swagger.json")).StatusCode);
+        var document = await client.GetFromJsonAsync<JsonElement>("/swagger/v1/swagger.json");
+        Assert.Equal("RewardFlow API", document.GetProperty("info").GetProperty("title").GetString());
+        Assert.Equal("v1", document.GetProperty("info").GetProperty("version").GetString());
     }
 
     /// <summary>Intention-Revealing Interfaces: complete earned-points and redemption journey.</summary>

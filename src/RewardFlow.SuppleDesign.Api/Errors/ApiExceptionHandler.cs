@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Domain.Exceptions;
 
-namespace RewardFlow.SuppleDesign.Presentation.Errors;
+namespace RewardFlow.SuppleDesign.Api.Errors;
 
 /// <summary>Conceptual Contours: translates domain/application failures into HTTP Problem Details only at the boundary.</summary>
 public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails) : IExceptionHandler

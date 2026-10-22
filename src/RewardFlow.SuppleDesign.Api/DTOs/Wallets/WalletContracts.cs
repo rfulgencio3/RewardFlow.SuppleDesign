@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace RewardFlow.SuppleDesign.Presentation.DTOs.Wallets;
+namespace RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 
 /// <summary>Conceptual Contours: HTTP input validation is separate from domain assertions.</summary>
 public sealed class PointsRequest
