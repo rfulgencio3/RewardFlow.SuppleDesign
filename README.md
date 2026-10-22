@@ -10,6 +10,7 @@
 [![ASP.NET Core](https://img.shields.io/badge/ASP.NET_Core-Web_API-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://learn.microsoft.com/aspnet/core/)
 [![Architecture](https://img.shields.io/badge/architecture-Clean_%2B_Hexagonal-0B7285?style=flat-square)](#architecture-clean-architecture-and-hexagonal-ports)
 [![DDD](https://img.shields.io/badge/DDD-Supple_Design-E85D04?style=flat-square)](#how-the-code-applies-evans-supple-design-patterns)
+[![CI](https://img.shields.io/github/actions/workflow/status/rfulgencio3/RewardFlow.SuppleDesign/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/rfulgencio3/RewardFlow.SuppleDesign/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-xUnit-5C2D91?style=flat-square&logo=dotnet&logoColor=white)](#tests)
 
 A runnable loyalty and reward-points API demonstrating the Supple Design patterns from Chapter 10 of Eric Evans' *Domain-Driven Design*.
@@ -87,7 +88,7 @@ These links are study aids, not claims that this sample is the only valid implem
 
 ### Prerequisites
 
-Install the .NET 8 SDK or a later SDK capable of targeting .NET 8, plus the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; Presentation uses Swashbuckle for Swagger and OpenAPI.
+Install a .NET SDK with `.slnx` support (9.0.200 or later) and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects have no third-party package dependencies; Presentation uses Swashbuckle for Swagger and OpenAPI.
 
 ### Start the API
 

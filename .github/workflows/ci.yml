@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore
+        run: dotnet restore RewardFlow.SuppleDesign.slnx
+
+      - name: Build
+        run: dotnet build RewardFlow.SuppleDesign.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test RewardFlow.SuppleDesign.slnx --configuration Release --no-build --verbosity normal
