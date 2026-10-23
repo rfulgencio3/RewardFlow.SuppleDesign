@@ -61,7 +61,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 
 **RewardFlow** is a small loyalty and reward-points management system. Each member is represented by a rewards wallet that can be opened, credited when points are earned, debited when points are redeemed, queried for its current balance, and checked to determine whether it can afford a redemption.
 
-The project focuses on this compact business flow so the domain language and design decisions remain easy to see. It is an educational model rather than a complete loyalty platform: member enrollment, campaigns, points expiration, authentication and a transaction ledger are outside its current scope.
+The project focuses on this compact business flow so the domain language and design decisions remain easy to see. Every credit and debit has an identity, reason and immutable audit record. It is an educational model rather than a complete loyalty platform: member enrollment, campaigns, points expiration and authentication remain outside its current scope.
 
 ## Supple Design assessment
 
@@ -105,10 +105,11 @@ Use one wallet ID throughout a flow. A wallet must be opened before any command 
 | --- | --- | --- | --- |
 | Open a wallet | `POST /api/wallets` | `{ "name": "Primary rewards" }` | `201 Created`, generated `walletId` and a `Location` header |
 | Read wallet details | `GET /api/wallets/{id}` | No body | `200 OK` with name, status, creation time and balance |
-| Credit earned points | `POST /api/wallets/{id}/credit` | `{ "points": 100 }` | `200 OK` with the updated balance |
-| Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "points": 40 }` | `200 OK`, provided the wallet can afford the amount |
+| Credit earned points | `POST /api/wallets/{id}/credit` | `{ "operationId": "uuid", "points": 100, "reason": "Purchase" }` | `200 OK` with the movement and resulting balance |
+| Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "operationId": "uuid", "points": 40, "reason": "Redemption" }` | `200 OK`, provided the wallet can afford the amount |
 | Read the balance | `GET /api/wallets/{id}/balance` | No body | `200 OK` with the current points |
 | Check affordability | `GET /api/wallets/{id}/can-afford?requiredPoints=60` | Non-negative whole points in the query string | `200 OK` with `canAfford`; the balance is unchanged |
+| Read transaction history | `GET /api/wallets/{id}/transactions?page=1&pageSize=20` | A page of 1 to 100 items | `200 OK` in reverse chronological order |
 | Suspend / reactivate / close | `POST /api/wallets/{id}/{action}` | No body | `204 No Content` after a valid lifecycle transition |
 
 The commands below create a wallet, credit 100 points, debit 40, confirm that 60 points are affordable and then demonstrate an overdraft rejection:
@@ -129,11 +130,13 @@ Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId"
 
 # Earn 100 points: 200 OK.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/credit" `
-    -ContentType 'application/json' -Body '{"points":100}'
+    -ContentType 'application/json' `
+    -Body (@{ operationId = [guid]::NewGuid(); points = 100; reason = 'Purchase reward' } | ConvertTo-Json)
 
 # Redeem 40 points: 200 OK, 60 remain.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
-    -ContentType 'application/json' -Body '{"points":40}'
+    -ContentType 'application/json' `
+    -Body (@{ operationId = [guid]::NewGuid(); points = 40; reason = 'Gift redemption' } | ConvertTo-Json)
 
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/balance"
 
@@ -143,7 +146,8 @@ Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?requiredPoints
 # Rejected: 422 Unprocessable Entity; balance remains 60.
 # PowerShell reports an HTTP error for this intentional failure.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
-    -ContentType 'application/json' -Body '{"points":61}'
+    -ContentType 'application/json' `
+    -Body (@{ operationId = [guid]::NewGuid(); points = 61; reason = 'Overdraft example' } | ConvertTo-Json)
 ```
 
 </details>
@@ -180,17 +184,18 @@ sequenceDiagram
     participant Wallet as RewardsWallet
     participant Points as RewardPoints
 
-    Client->>API: POST /api/wallets/{id}/credit
-    API->>UseCase: ExecuteAsync(id, points)
+    Client->>API: POST credit (operationId, points, reason)
+    API->>UseCase: ExecuteAsync(id, operationId, points, reason)
+    UseCase->>Repository: FindTransactionAsync(operationId)
     UseCase->>Repository: FindAsync(id)
     Repository-->>UseCase: detached WalletSnapshot
     UseCase->>Wallet: Credit(earnedPoints)
     Wallet->>Points: Add(earnedPoints)
     Points-->>Wallet: new RewardPoints
-    UseCase->>Repository: TrySaveAsync(wallet, revision)
-    Repository-->>UseCase: saved
-    UseCase-->>API: WalletBalance
-    API-->>Client: 200 WalletBalanceResponse
+    UseCase->>Repository: TrySaveMovementAsync(wallet, transaction, revision)
+    Repository-->>UseCase: balance and movement saved atomically
+    UseCase-->>API: RewardMovement
+    API-->>Client: 200 RewardMovementResponse
 ```
 
 1. `WalletsController` validates and translates the HTTP request, then calls the inbound application port.
@@ -288,10 +293,12 @@ RewardFlow.SuppleDesign/
 │   ├── RewardFlow.SuppleDesign.Domain/            # Business model; no external dependencies
 │   │   ├── Entities/
 │   │   │   ├── RewardsWallet.cs                   # Aggregate root and lifecycle rules
-│   │   │   └── RewardsWalletStatus.cs
+│   │   │   ├── RewardsWalletStatus.cs
+│   │   │   └── RewardTransaction.cs               # Identified immutable movement
 │   │   ├── ValueObjects/
 │   │   │   ├── RewardPoints.cs                    # Immutable arithmetic value object
-│   │   │   └── WalletName.cs                      # Normalized name value object
+│   │   │   ├── WalletName.cs                      # Normalized name value object
+│   │   │   └── RewardReason.cs                    # Normalized movement reason
 │   │   ├── Exceptions/
 │   │   │   └── DomainException.cs
 │   │   ├── Ports/
@@ -467,8 +474,9 @@ The project deliberately has no generic repository, Unit of Work wrapper, mediat
 | --- | --- | --- | --- |
 | POST | `/api/wallets` | `{"name":"Primary rewards"}` | 201, generated ID and wallet location |
 | GET | `/api/wallets/{id}` | none | 200 and wallet details |
-| POST | `/api/wallets/{id}/credit` | `{"points":100}` | 200 and updated balance |
-| POST | `/api/wallets/{id}/debit` | `{"points":40}` | 200 and updated balance |
+| POST | `/api/wallets/{id}/credit` | operation ID, points and reason | 200 and accepted movement |
+| POST | `/api/wallets/{id}/debit` | operation ID, points and reason | 200 and accepted movement |
+| GET | `/api/wallets/{id}/transactions?page=1&pageSize=20` | No body | 200 and a ledger page |
 | GET | `/api/wallets/{id}/balance` | none | 200 and current balance |
 | GET | `/api/wallets/{id}/can-afford?requiredPoints=60` | none | 200 and affordability result |
 | POST | `/api/wallets/{id}/suspend` | none | 204 after suspension |
@@ -502,15 +510,13 @@ ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic req
 
 `PostgresRewardsWalletRepository` implements the domain-owned repository port through EF Core and Npgsql. The adapter maps a persistence-only `RewardsWalletState` to a fresh `RewardsWallet` and immutable `RewardPoints` on every load. The aggregate has no EF Core attributes, proxy requirements, navigation properties or persistence constructor.
 
-Opening inserts revision `0`; PostgreSQL's primary key protects the generated identity. Saving issues one conditional update matching both `id` and the expected `revision`, then increments the revision. If another command has already saved that snapshot, zero rows are updated and the application returns 409. A failed domain operation never reaches persistence.
-
-When two updates race, one can return 409. The client should reload the balance and reconsider/retry the operation. The demo does not automatically retry commands or implement idempotency keys. Repeating a successful credit/debit applies it again.
+Opening inserts revision `0`; PostgreSQL's primary key protects the generated identity. An accepted movement updates the balance by expected revision and inserts its immutable transaction record in one database transaction. The `operation_id` key prevents duplicates while the revision prevents lost updates. An identical retry returns the original result; different data for the same identity returns 409. A failed domain operation never reaches persistence.
 
 The connection string is read from `ConnectionStrings:RewardFlow`. Local settings match `compose.yaml`; deployments can override it with the `ConnectionStrings__RewardFlow` environment variable. The checked-in password is only a local development credential.
 
 ### Database schema (ERD)
 
-The domain currently needs one persistence table. `WalletName` and `RewardPoints` are flattened because they are value objects owned by the wallet, while `revision` belongs to persistence coordination rather than to the aggregate.
+The schema separates current wallet state from its immutable ledger. `WalletName`, `RewardReason` and `RewardPoints` are flattened value objects, while `revision` belongs to persistence coordination rather than to the aggregate.
 
 ```mermaid
 erDiagram
@@ -522,6 +528,16 @@ erDiagram
         bigint points "non-negative balance"
         bigint revision "optimistic concurrency"
     }
+    REWARD_TRANSACTIONS {
+        uuid operation_id PK "idempotent identity"
+        uuid wallet_id FK "affected wallet"
+        integer type "credit or debit"
+        bigint points "positive amount"
+        varchar reason "business reason"
+        timestamptz occurred_at_utc "accepted instant"
+        bigint balance_after "resulting balance"
+    }
+    REWARDS_WALLETS ||--o{ REWARD_TRANSACTIONS : records
 ```
 
 Check constraints reject blank names, unsupported status values, negative points and negative revisions.
@@ -573,11 +589,9 @@ Future additions should introduce a concrete modeling pressure and make its effe
 
 | Learning increment | Domain question to explore | Supple Design focus |
 | --- | --- | --- |
-| Reward transaction history | Is a credit or debit merely a balance change, or does each movement have identity, reason and audit meaning? | Discover new Conceptual Contours and decide whether a transaction is an Entity inside the wallet boundary or belongs to another Aggregate. |
 | Points expiration | How should points earned at different times expire while preserving valid redemption rules? | Introduce explicit temporal concepts, Intention-Revealing Interfaces and Assertions instead of spreading date comparisons across use cases. |
 | Configurable earning policy | How are purchase amount, campaign and membership tier converted into points? | Model the calculation as a Standalone Class with a Side-Effect-Free Function whose inputs and result are explicit. |
 | Transfer between wallets | Which rules and consistency boundary govern movement involving two wallets? | Evaluate whether the behavior belongs to an Aggregate or requires a Domain Service, based on the model rather than the pattern name. |
-| Idempotent commands | How can a retried credit avoid applying the same business event twice? | Give command identity and duplicate handling clear names while keeping transport and persistence details outside the reward model. |
 | Algebraic and property-based examples | Which properties always hold for reward-point operations? | Demonstrate Closure of Operations, immutability and invariants with properties such as additive identity and rejected underflow. |
 
 Each increment should begin with examples, vocabulary and failing tests. Only then should the model change. The README and abstraction budget should be updated with the new decision, alternatives considered and the condition that justifies every new type or boundary.
@@ -608,6 +622,8 @@ The central domain types include XML `<seealso>` references that IDEs can presen
 | --- | --- | --- |
 | [`RewardPoints`](src/RewardFlow.SuppleDesign.Domain/ValueObjects/RewardPoints.cs) | Standalone Class, Closure of Operations and Side-Effect-Free Functions | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [`WalletName`](src/RewardFlow.SuppleDesign.Domain/ValueObjects/WalletName.cs) | Standalone Class and Assertions | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [`RewardReason`](src/RewardFlow.SuppleDesign.Domain/ValueObjects/RewardReason.cs) | Standalone Class and explicit language for a movement's reason | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [`RewardTransaction`](src/RewardFlow.SuppleDesign.Domain/Entities/RewardTransaction.cs) | Entity and new Conceptual Contour for audit and idempotency | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
 | [`IRewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWallet.cs) | Intention-Revealing Interfaces | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [`DomainAssertions`](src/RewardFlow.SuppleDesign.Domain/DomainAssertions.cs) | Assertions and explicit invariants | [Chapter 10: Supple Design](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [`RewardsWallet`](src/RewardFlow.SuppleDesign.Domain/Entities/RewardsWallet.cs) | Conceptual Contours, Entity and Aggregate Root | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |

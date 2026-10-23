@@ -48,8 +48,28 @@ public static class DomainAssertions
     /// <summary>Assertions: creation timestamps are explicit UTC instants.</summary>
     public static void WalletCreationTime(DateTimeOffset createdAtUtc)
     {
-        if (createdAtUtc.Offset != TimeSpan.Zero)
-            throw new DomainException("wallet_creation_time_must_be_utc", "A rewards wallet creation time must use UTC.");
+        UtcInstant(createdAtUtc, "wallet_creation_time_must_be_utc", "A rewards wallet creation time must use UTC.");
+    }
+
+    /// <summary>Assertions: a retried business operation must carry a meaningful identity.</summary>
+    public static void OperationIdentity(Guid id)
+    {
+        if (id == Guid.Empty)
+            throw new DomainException("invalid_operation_id", "A reward operation ID cannot be empty.");
+    }
+
+    /// <summary>Assertions: timestamps recorded by the domain use UTC.</summary>
+    public static void UtcInstant(DateTimeOffset instant, string code, string message)
+    {
+        if (instant.Offset != TimeSpan.Zero)
+            throw new DomainException(code, message);
+    }
+
+    /// <summary>Assertions: persisted transaction types must be supported.</summary>
+    public static void TransactionType(Entities.RewardTransactionType type)
+    {
+        if (!Enum.IsDefined(type))
+            throw new DomainException("invalid_reward_transaction_type", "The reward transaction type is invalid.");
     }
 
     /// <summary>Assertions: persisted lifecycle values must name a supported state.</summary>

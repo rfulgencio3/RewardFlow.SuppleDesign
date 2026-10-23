@@ -51,12 +51,15 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
                 .GetProperty("name").GetProperty("example").GetString());
         Assert.Equal(
             100,
-            schemas.GetProperty(nameof(PointsRequest)).GetProperty("properties")
+            schemas.GetProperty(nameof(RewardMovementRequest)).GetProperty("properties")
                 .GetProperty("points").GetProperty("example").GetInt64());
         var statusSchema = schemas.GetProperty(nameof(RewardsWalletStatus));
         Assert.Equal(
             ["active", "suspended", "closed"],
             statusSchema.GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
+        var creditResponses = document.GetProperty("paths").GetProperty("/api/wallets/{id}/credit")
+            .GetProperty("post").GetProperty("responses");
+        Assert.All(["200", "400", "404", "409", "422"], code => Assert.True(creditResponses.TryGetProperty(code, out _)));
     }
 
     /// <summary>Intention-Revealing Interfaces: complete earned-points and redemption journey.</summary>
@@ -71,13 +74,17 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal(0, details.Points);
         Assert.Equal(TimeSpan.Zero, details.CreatedAtUtc.Offset);
 
-        var credited = await client.PostAsJsonAsync(path + "/credit", new { points = 100 });
+        var creditOperationId = Guid.NewGuid();
+        var credited = await client.PostAsJsonAsync(path + "/credit",
+            new { operationId = creditOperationId, points = 100, reason = "Purchase reward" });
         Assert.Equal(HttpStatusCode.OK, credited.StatusCode);
-        Assert.Equal(100, (await credited.Content.ReadFromJsonAsync<WalletBalanceResponse>())!.Points);
-        var debited = await client.PostAsJsonAsync(path + "/debit", new { points = 40 });
+        Assert.Equal(100, (await credited.Content.ReadFromJsonAsync<RewardMovementResponse>(JsonOptions))!.BalanceAfter);
+        var debited = await client.PostAsJsonAsync(path + "/debit",
+            new { operationId = Guid.NewGuid(), points = 40, reason = "Gift redemption" });
         Assert.Equal(HttpStatusCode.OK, debited.StatusCode);
-        Assert.Equal(60, (await debited.Content.ReadFromJsonAsync<WalletBalanceResponse>())!.Points);
-        var overdraft = await client.PostAsJsonAsync(path + "/debit", new { points = 61 });
+        Assert.Equal(60, (await debited.Content.ReadFromJsonAsync<RewardMovementResponse>(JsonOptions))!.BalanceAfter);
+        var overdraft = await client.PostAsJsonAsync(path + "/debit",
+            new { operationId = Guid.NewGuid(), points = 61, reason = "Overspend" });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, overdraft.StatusCode);
         Assert.Equal("application/problem+json", overdraft.Content.Headers.ContentType!.MediaType);
         var problem = await overdraft.Content.ReadFromJsonAsync<JsonElement>();
@@ -131,7 +138,8 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     {
         var (_, path) = await OpenWalletAsync("Empty wallet");
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
-            (await client.PostAsJsonAsync(path + "/debit", new { points = 1 })).StatusCode);
+            (await client.PostAsJsonAsync(path + "/debit",
+                new { operationId = Guid.NewGuid(), points = 1, reason = "Redemption" })).StatusCode);
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
             (await client.GetAsync($"/api/wallets/{Guid.Empty}")).StatusCode);
     }
@@ -160,24 +168,61 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     public async Task WalletLifecycleControlsMovements()
     {
         var (_, path) = await OpenWalletAsync("Lifecycle wallet");
-        await client.PostAsJsonAsync(path + "/credit", new { points = 100 });
+        await client.PostAsJsonAsync(path + "/credit",
+            new { operationId = Guid.NewGuid(), points = 100, reason = "Purchase reward" });
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/suspend", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync(path + "/credit", new { points = 10 })).StatusCode);
-        var blockedDebit = await client.PostAsJsonAsync(path + "/debit", new { points = 10 });
+            (await client.PostAsJsonAsync(path + "/credit",
+                new { operationId = Guid.NewGuid(), points = 10, reason = "Purchase reward" })).StatusCode);
+        var blockedDebit = await client.PostAsJsonAsync(path + "/debit",
+            new { operationId = Guid.NewGuid(), points = 10, reason = "Redemption" });
         Assert.Equal(HttpStatusCode.Conflict, blockedDebit.StatusCode);
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/reactivate", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync(path + "/debit", new { points = 10 })).StatusCode);
+            (await client.PostAsJsonAsync(path + "/debit",
+                new { operationId = Guid.NewGuid(), points = 10, reason = "Redemption" })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/close", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict,
-            (await client.PostAsJsonAsync(path + "/credit", new { points = 1 })).StatusCode);
+            (await client.PostAsJsonAsync(path + "/credit",
+                new { operationId = Guid.NewGuid(), points = 1, reason = "Late reward" })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(path + "/close", null)).StatusCode);
         Assert.Equal(
             RewardsWalletStatus.Closed,
             (await client.GetFromJsonAsync<WalletDetailsResponse>(path, JsonOptions))!.Status);
+    }
+
+    /// <summary>Assertions: an operation retry is replayed and the ledger records it once.</summary>
+    [Fact]
+    public async Task CreditRetryIsIdempotentAndLedgerIsPaged()
+    {
+        var (_, path) = await OpenWalletAsync("Ledger wallet");
+        var operationId = Guid.NewGuid();
+        var request = new { operationId, points = 25, reason = "Welcome reward" };
+
+        var first = await client.PostAsJsonAsync(path + "/credit", request);
+        var replay = await client.PostAsJsonAsync(path + "/credit", request);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+        Assert.Equal(
+            await first.Content.ReadAsStringAsync(),
+            await replay.Content.ReadAsStringAsync());
+
+        var ledger = await client.GetFromJsonAsync<RewardTransactionPageResponse>(
+            path + "/transactions?page=1&pageSize=1", JsonOptions);
+        var movement = Assert.Single(ledger!.Items);
+        Assert.Equal(operationId, movement.OperationId);
+        Assert.Equal(RewardTransactionType.Credit, movement.Type);
+        Assert.Equal("Welcome reward", movement.Reason);
+        Assert.Equal(25, movement.BalanceAfter);
+        Assert.Equal(25, (await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance"))!.Points);
+
+        var conflict = await client.PostAsJsonAsync(path + "/credit",
+            new { operationId, points = 30, reason = "Changed retry" });
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.GetAsync(path + "/transactions?page=0&pageSize=101")).StatusCode);
     }
 
     private async Task<(Guid WalletId, string Path)> OpenWalletAsync(string name)

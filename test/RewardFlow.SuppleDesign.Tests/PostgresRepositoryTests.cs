@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using RewardFlow.SuppleDesign.Domain.Entities;
+using RewardFlow.SuppleDesign.Domain.Ports;
 using RewardFlow.SuppleDesign.Domain.ValueObjects;
 using RewardFlow.SuppleDesign.Infrastructure.Persistence;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
@@ -53,5 +54,33 @@ public sealed class PostgresRepositoryTests
         Assert.Equal(RewardsWalletStatus.Closed, saved.Wallet.Status);
         Assert.Equal(openedAt, saved.Wallet.CreatedAtUtc);
         Assert.Equal(1, saved.Revision);
+    }
+
+    /// <summary>Balance and ledger entry are committed together and can be queried through the port.</summary>
+    [Fact]
+    public async Task MovementPersistsBalanceAndImmutableLedgerAtomically()
+    {
+        var options = new DbContextOptionsBuilder<RewardFlowDbContext>()
+            .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ?? DefaultConnectionString)
+            .Options;
+        var walletId = Guid.NewGuid();
+        var operationId = Guid.NewGuid();
+        var occurredAt = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero);
+
+        await using var context = new RewardFlowDbContext(options);
+        await context.Database.MigrateAsync();
+        var repository = new PostgresRewardsWalletRepository(context);
+        Assert.True(await repository.TryAddAsync(new RewardsWallet(walletId, new WalletName("Ledger wallet"), occurredAt)));
+        var snapshot = (await repository.FindAsync(walletId))!;
+        snapshot.Wallet.Credit(new RewardPoints(15));
+        var movement = new RewardTransaction(operationId, walletId, RewardTransactionType.Credit,
+            new RewardPoints(15), new RewardReason("Purchase reward"), occurredAt, snapshot.Wallet.Balance);
+
+        Assert.Equal(MovementSaveResult.Saved,
+            await repository.TrySaveMovementAsync(snapshot.Wallet, movement, snapshot.Revision));
+        var saved = await repository.FindTransactionAsync(operationId);
+        Assert.Equal(movement, saved);
+        Assert.Equal(movement, Assert.Single(await repository.ListTransactionsAsync(walletId, 0, 20)));
+        Assert.Equal(15, (await repository.FindAsync(walletId))!.Wallet.Balance.Value);
     }
 }

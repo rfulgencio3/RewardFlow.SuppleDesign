@@ -1,4 +1,5 @@
 using RewardFlow.SuppleDesign.Domain;
+using RewardFlow.SuppleDesign.Domain.Entities;
 using RewardFlow.SuppleDesign.Domain.Ports;
 
 namespace RewardFlow.SuppleDesign.Application.Wallets;
@@ -32,4 +33,25 @@ internal static class WalletPersistence
 
         return new(snapshot.Wallet.Balance.Value);
     }
+
+    /// <summary>Assertions: balance and movement are persisted atomically and duplicate operations are replayed.</summary>
+    internal static async Task<RewardTransaction> SaveMovementAsync(IRewardsWalletRepository repository,
+        WalletSnapshot snapshot, RewardTransaction transaction, CancellationToken cancellationToken)
+    {
+        var result = await repository.TrySaveMovementAsync(snapshot.Wallet, transaction, snapshot.Revision, cancellationToken);
+        if (result == MovementSaveResult.Saved)
+            return await repository.FindTransactionAsync(transaction.OperationId, cancellationToken)
+                ?? throw new WalletConflictException("The saved reward operation could not be reloaded.");
+        var replay = await repository.FindTransactionAsync(transaction.OperationId, cancellationToken);
+        if (replay is not null)
+            return replay;
+        if (result == MovementSaveResult.DuplicateOperation)
+            throw new WalletConflictException("The reward operation was recorded concurrently but could not be reloaded.");
+        throw new WalletConflictException("The rewards wallet changed concurrently. Reload its balance and retry.");
+    }
+
+    /// <summary>Maps a domain transaction to an application result without exposing persistence models.</summary>
+    internal static RewardMovement ToResult(RewardTransaction transaction) => new(transaction.OperationId,
+        transaction.Type, transaction.Points.Value, transaction.Reason.Value, transaction.OccurredAtUtc,
+        transaction.BalanceAfter.Value);
 }
