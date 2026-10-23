@@ -93,8 +93,6 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 > [!TIP]
 > Open [http://localhost:5180/](http://localhost:5180/) after the API starts. The root redirects to Swagger UI, where every endpoint can be explored and executed. The raw OpenAPI document is available at `/swagger/v1/swagger.json`.
 
-Visual Studio 2022 17.11 or later also discovers the shared `RewardFlow API` startup profile from [`RewardFlow.SuppleDesign.slnLaunch`](RewardFlow.SuppleDesign.slnLaunch) when the solution is opened.
-
 Compose starts the pinned PostgreSQL image with the local development credentials from `compose.yaml`. The API applies pending EF Core migrations before accepting requests, so the first start creates the schema automatically. Wallets remain available across API restarts because PostgreSQL stores them in the named Docker volume.
 
 ## How to perform wallet actions
@@ -273,7 +271,7 @@ The folders are architectural boundaries rather than technical buckets. Each pro
 ```text
 RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
-├── RewardFlow.SuppleDesign.slnLaunch              # Shared Visual Studio startup profile
+├── RewardFlow.SuppleDesign.slnLaunch              # Optional shared startup profile
 ├── Directory.Build.props                         # Shared .NET 8 build settings
 ├── compose.yaml                                  # Local PostgreSQL 17 container and volume
 ├── dotnet-tools.json                             # Reproducible EF Core CLI version

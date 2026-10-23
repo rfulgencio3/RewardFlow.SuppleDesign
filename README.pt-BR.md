@@ -93,8 +93,6 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 > [!TIP]
 > Abra [http://localhost:5180/](http://localhost:5180/) após iniciar a API. A raiz redireciona para o Swagger UI, onde todos os endpoints podem ser consultados e executados. O documento OpenAPI está disponível em /swagger/v1/swagger.json.
 
-O Visual Studio 2022 17.11 ou superior também encontra o perfil de inicialização compartilhado RewardFlow API em [RewardFlow.SuppleDesign.slnLaunch](RewardFlow.SuppleDesign.slnLaunch).
-
 O Compose inicia uma imagem fixada do PostgreSQL com as credenciais locais de desenvolvimento definidas em compose.yaml. Antes de aceitar requisições, a API aplica as migrations pendentes do EF Core. Na primeira execução, o banco e a tabela são criados automaticamente. As carteiras permanecem disponíveis depois que a API é reiniciada porque o PostgreSQL usa um volume Docker nomeado.
 
 ## Como realizar ações na carteira
@@ -250,7 +248,7 @@ Domain não possui referências a outros projetos ou pacotes. Application e Infr
 ~~~text
 RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
-├── RewardFlow.SuppleDesign.slnLaunch              # Perfil de startup do Visual Studio
+├── RewardFlow.SuppleDesign.slnLaunch              # Perfil de inicialização compartilhado opcional
 ├── Directory.Build.props                         # Configurações compartilhadas do .NET 8
 ├── compose.yaml                                  # PostgreSQL 17 e volume local
 ├── dotnet-tools.json                             # Versão reproduzível do dotnet-ef
