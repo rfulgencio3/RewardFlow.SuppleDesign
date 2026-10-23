@@ -33,4 +33,29 @@ public static class DomainAssertions
         if (id == Guid.Empty)
             throw new DomainException("invalid_wallet_id", "A rewards wallet ID cannot be empty.");
     }
+
+    /// <summary>Assertions: wallet names are normalized, required and bounded.</summary>
+    public static string WalletName(string? name, int maximumLength)
+    {
+        var normalized = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            throw new DomainException("wallet_name_required", "A rewards wallet name is required.");
+        if (normalized.Length > maximumLength)
+            throw new DomainException("wallet_name_too_long", $"A rewards wallet name cannot exceed {maximumLength} characters.");
+        return normalized;
+    }
+
+    /// <summary>Assertions: creation timestamps are explicit UTC instants.</summary>
+    public static void WalletCreationTime(DateTimeOffset createdAtUtc)
+    {
+        if (createdAtUtc.Offset != TimeSpan.Zero)
+            throw new DomainException("wallet_creation_time_must_be_utc", "A rewards wallet creation time must use UTC.");
+    }
+
+    /// <summary>Assertions: persisted lifecycle values must name a supported state.</summary>
+    public static void WalletStatus(Entities.RewardsWalletStatus status)
+    {
+        if (!Enum.IsDefined(status))
+            throw new DomainException("invalid_wallet_status", "The rewards wallet status is invalid.");
+    }
 }

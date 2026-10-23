@@ -8,7 +8,12 @@ namespace RewardFlow.SuppleDesign.Tests.TestDoubles;
 /// <summary>Fast test double that preserves the repository port's detached-snapshot and concurrency semantics.</summary>
 internal sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
 {
-    private sealed record StoredWallet(long Points, long Revision);
+    private sealed record StoredWallet(
+        string Name,
+        RewardsWalletStatus Status,
+        DateTimeOffset CreatedAtUtc,
+        long Points,
+        long Revision);
     private readonly ConcurrentDictionary<Guid, StoredWallet> wallets = new();
 
     /// <inheritdoc />
@@ -16,7 +21,12 @@ internal sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         WalletSnapshot? snapshot = wallets.TryGetValue(walletId, out var stored)
-            ? new(new RewardsWallet(walletId, new RewardPoints(stored.Points)), stored.Revision)
+            ? new(new RewardsWallet(
+                walletId,
+                new WalletName(stored.Name),
+                new RewardPoints(stored.Points),
+                stored.Status,
+                stored.CreatedAtUtc), stored.Revision)
             : null;
         return Task.FromResult(snapshot);
     }
@@ -25,7 +35,12 @@ internal sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
     public Task<bool> TryAddAsync(RewardsWallet wallet, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(wallets.TryAdd(wallet.Id, new(wallet.Balance.Value, 0)));
+        return Task.FromResult(wallets.TryAdd(wallet.Id, new(
+            wallet.Name.Value,
+            wallet.Status,
+            wallet.CreatedAtUtc,
+            wallet.Balance.Value,
+            0)));
     }
 
     /// <inheritdoc />
@@ -35,6 +50,12 @@ internal sealed class InMemoryRewardsWalletRepository : IRewardsWalletRepository
         if (!wallets.TryGetValue(wallet.Id, out var current) || current.Revision != expectedRevision)
             return Task.FromResult(false);
         return Task.FromResult(wallets.TryUpdate(wallet.Id,
-            new(wallet.Balance.Value, checked(expectedRevision + 1)), current));
+            new(
+                wallet.Name.Value,
+                wallet.Status,
+                wallet.CreatedAtUtc,
+                wallet.Balance.Value,
+                checked(expectedRevision + 1)),
+            current));
     }
 }

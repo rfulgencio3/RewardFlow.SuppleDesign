@@ -13,6 +13,8 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails) :
     {
         var (status, title, code) = exception switch
         {
+            DomainException { Code: "wallet_not_active" or "wallet_closed" or "invalid_wallet_status_transition" } domain =>
+                (StatusCodes.Status409Conflict, "Rewards wallet state conflict", domain.Code),
             DomainException domain => (StatusCodes.Status422UnprocessableEntity, "Reward rule violated", domain.Code),
             WalletNotFoundException => (StatusCodes.Status404NotFound, "Rewards wallet not found", "wallet_not_found"),
             WalletConflictException => (StatusCodes.Status409Conflict, "Rewards wallet conflict", "wallet_conflict"),

@@ -30,6 +30,6 @@ internal static class WalletPersistence
         if (!await repository.TrySaveAsync(snapshot.Wallet, snapshot.Revision, cancellationToken))
             throw new WalletConflictException("The rewards wallet changed concurrently. Reload its balance and retry.");
 
-        return new(snapshot.Wallet.Id, snapshot.Wallet.Balance.Value);
+        return new(snapshot.Wallet.Balance.Value);
     }
 }

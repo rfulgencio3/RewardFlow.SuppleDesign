@@ -9,17 +9,39 @@ namespace RewardFlow.SuppleDesign.Api.Endpoints.Wallets;
 [Route("api/wallets")]
 public sealed class WalletsController(
     IOpenRewardsWallet openWallet,
+    IGetRewardsWallet getWallet,
     ICreditRewardPoints creditPoints,
     IDebitRewardPoints debitPoints,
     IGetWalletBalance getBalance,
-    ICheckWalletAffordability checkAffordability) : ControllerBase
+    ICheckWalletAffordability checkAffordability,
+    ISuspendRewardsWallet suspendWallet,
+    IReactivateRewardsWallet reactivateWallet,
+    ICloseRewardsWallet closeWallet) : ControllerBase
 {
-    /// <summary>Opens a rewards wallet with a zero balance.</summary>
-    [HttpPost("{id:guid}")]
-    public async Task<ActionResult<WalletBalanceResponse>> Open(Guid id, CancellationToken cancellationToken)
+    /// <summary>Opens a named rewards wallet with generated identity, active status and zero balance.</summary>
+    [HttpPost]
+    public async Task<ActionResult<OpenWalletResponse>> Open(
+        OpenWalletRequest request,
+        CancellationToken cancellationToken)
     {
-        var result = await openWallet.ExecuteAsync(id, cancellationToken);
-        return CreatedAtAction(nameof(Balance), new { id }, new WalletBalanceResponse(result.WalletId, result.Points));
+        var result = await openWallet.ExecuteAsync(request.Name!, cancellationToken);
+        return CreatedAtAction(
+            nameof(Get),
+            new { id = result.WalletId },
+            new OpenWalletResponse(result.WalletId));
+    }
+
+    /// <summary>Gets the wallet's name, lifecycle state, creation time and balance.</summary>
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<WalletDetailsResponse>> Get(Guid id, CancellationToken cancellationToken)
+    {
+        var result = await getWallet.ExecuteAsync(id, cancellationToken);
+        return Ok(new WalletDetailsResponse(
+            result.WalletId,
+            result.Name,
+            result.Status,
+            result.CreatedAtUtc,
+            result.Points));
     }
 
     /// <summary>Credits earned points to a rewards wallet.</summary>
@@ -27,7 +49,7 @@ public sealed class WalletsController(
     public async Task<ActionResult<WalletBalanceResponse>> Credit(Guid id, PointsRequest request, CancellationToken cancellationToken)
     {
         var result = await creditPoints.ExecuteAsync(id, request.Points!.Value, cancellationToken);
-        return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
+        return Ok(new WalletBalanceResponse(result.Points));
     }
 
     /// <summary>Debits redeemed points from a rewards wallet.</summary>
@@ -35,7 +57,7 @@ public sealed class WalletsController(
     public async Task<ActionResult<WalletBalanceResponse>> Debit(Guid id, PointsRequest request, CancellationToken cancellationToken)
     {
         var result = await debitPoints.ExecuteAsync(id, request.Points!.Value, cancellationToken);
-        return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
+        return Ok(new WalletBalanceResponse(result.Points));
     }
 
     /// <summary>Gets the current rewards wallet balance.</summary>
@@ -43,7 +65,7 @@ public sealed class WalletsController(
     public async Task<ActionResult<WalletBalanceResponse>> Balance(Guid id, CancellationToken cancellationToken)
     {
         var result = await getBalance.ExecuteAsync(id, cancellationToken);
-        return Ok(new WalletBalanceResponse(result.WalletId, result.Points));
+        return Ok(new WalletBalanceResponse(result.Points));
     }
 
     /// <summary>Checks whether the wallet can afford a points amount.</summary>
@@ -53,14 +75,37 @@ public sealed class WalletsController(
         [FromQuery,
          Microsoft.AspNetCore.Mvc.ModelBinding.BindRequired,
          System.ComponentModel.DataAnnotations.Range(typeof(long), "0", "9223372036854775807")]
-        long points,
+        long requiredPoints,
         CancellationToken cancellationToken)
     {
-        var result = await checkAffordability.ExecuteAsync(id, points, cancellationToken);
+        var result = await checkAffordability.ExecuteAsync(id, requiredPoints, cancellationToken);
         return Ok(new WalletAffordabilityResponse(
-            result.WalletId,
-            result.Balance,
+            result.AvailablePoints,
             result.RequiredPoints,
             result.CanAfford));
+    }
+
+    /// <summary>Temporarily suspends redemptions while still allowing earned-point credits.</summary>
+    [HttpPost("{id:guid}/suspend")]
+    public async Task<IActionResult> Suspend(Guid id, CancellationToken cancellationToken)
+    {
+        await suspendWallet.ExecuteAsync(id, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Returns a suspended wallet to active use.</summary>
+    [HttpPost("{id:guid}/reactivate")]
+    public async Task<IActionResult> Reactivate(Guid id, CancellationToken cancellationToken)
+    {
+        await reactivateWallet.ExecuteAsync(id, cancellationToken);
+        return NoContent();
+    }
+
+    /// <summary>Permanently closes a wallet and rejects further point movements.</summary>
+    [HttpPost("{id:guid}/close")]
+    public async Task<IActionResult> Close(Guid id, CancellationToken cancellationToken)
+    {
+        await closeWallet.ExecuteAsync(id, cancellationToken);
+        return NoContent();
     }
 }
