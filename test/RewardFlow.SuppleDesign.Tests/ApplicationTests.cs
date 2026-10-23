@@ -24,11 +24,14 @@ public sealed class ApplicationTests
         Assert.Equal(RewardsWalletStatus.Active, details.Status);
         Assert.Equal(OpenedAt, details.CreatedAtUtc);
         Assert.Equal(0, details.Points);
-        Assert.Equal(120, (await new CreditRewardPoints(repository).ExecuteAsync(id, 120)).Points);
-        Assert.Equal(100, (await new DebitRewardPoints(repository).ExecuteAsync(id, 20)).Points);
+        Assert.Equal(120, (await new CreditRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 120, "Purchase reward")).BalanceAfter);
+        Assert.Equal(100, (await new DebitRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 20, "Gift redemption")).BalanceAfter);
         Assert.True((await new CheckWalletAffordability(repository).ExecuteAsync(id, 100)).CanAfford);
         Assert.False((await new CheckWalletAffordability(repository).ExecuteAsync(id, 101)).CanAfford);
-        await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository).ExecuteAsync(id, 101));
+        await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 101, "Overspend"));
         Assert.Equal(100, (await new GetWalletBalance(repository).ExecuteAsync(id)).Points);
     }
 
@@ -73,18 +76,42 @@ public sealed class ApplicationTests
     {
         var repository = new InMemoryRewardsWalletRepository();
         var id = (await new OpenRewardsWallet(repository, Clock).ExecuteAsync("Lifecycle wallet")).WalletId;
-        await new CreditRewardPoints(repository).ExecuteAsync(id, 100);
+        await new CreditRewardPoints(repository, Clock).ExecuteAsync(id, Guid.NewGuid(), 100, "Purchase reward");
 
         await new SuspendRewardsWallet(repository).ExecuteAsync(id);
         Assert.Equal(RewardsWalletStatus.Suspended, (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
-        Assert.Equal(110, (await new CreditRewardPoints(repository).ExecuteAsync(id, 10)).Points);
-        await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository).ExecuteAsync(id, 10));
+        Assert.Equal(110, (await new CreditRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 10, "Purchase reward")).BalanceAfter);
+        await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 10, "Blocked redemption"));
 
         await new ReactivateRewardsWallet(repository).ExecuteAsync(id);
-        Assert.Equal(100, (await new DebitRewardPoints(repository).ExecuteAsync(id, 10)).Points);
+        Assert.Equal(100, (await new DebitRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 10, "Gift redemption")).BalanceAfter);
         await new CloseRewardsWallet(repository).ExecuteAsync(id);
         Assert.Equal(RewardsWalletStatus.Closed, (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
-        await Assert.ThrowsAsync<DomainException>(() => new CreditRewardPoints(repository).ExecuteAsync(id, 1));
+        await Assert.ThrowsAsync<DomainException>(() => new CreditRewardPoints(repository, Clock)
+            .ExecuteAsync(id, Guid.NewGuid(), 1, "Late purchase"));
+    }
+
+    /// <summary>Assertions: retrying the same operation returns its original result without moving points twice.</summary>
+    [Fact]
+    public async Task RepeatedOperationIsIdempotentAndAppearsOnceInTheLedger()
+    {
+        var repository = new InMemoryRewardsWalletRepository();
+        var id = (await new OpenRewardsWallet(repository, Clock).ExecuteAsync("Idempotent wallet")).WalletId;
+        var operationId = Guid.NewGuid();
+        var useCase = new CreditRewardPoints(repository, Clock);
+
+        var first = await useCase.ExecuteAsync(id, operationId, 25, "Welcome reward");
+        var replay = await useCase.ExecuteAsync(id, operationId, 25, "Welcome reward");
+        var ledger = await new ListRewardTransactions(repository).ExecuteAsync(id, 1, 20);
+
+        Assert.Equal(first, replay);
+        Assert.Equal(25, (await new GetWalletBalance(repository).ExecuteAsync(id)).Points);
+        Assert.Single(ledger.Items);
+        await Assert.ThrowsAsync<WalletConflictException>(() =>
+            useCase.ExecuteAsync(id, operationId, 30, "Different request"));
     }
 
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider

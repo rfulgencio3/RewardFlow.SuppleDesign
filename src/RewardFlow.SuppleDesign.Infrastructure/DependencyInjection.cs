@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using RewardFlow.SuppleDesign.Domain.Ports;
 using RewardFlow.SuppleDesign.Infrastructure.Persistence;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
@@ -28,6 +29,23 @@ public static class DependencyInjection
     {
         await using var scope = services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<RewardFlowDbContext>();
-        await context.Database.MigrateAsync(cancellationToken);
+        try
+        {
+            await context.Database.MigrateAsync(cancellationToken);
+        }
+        catch (Exception exception) when (ContainsNpgsqlFailure(exception))
+        {
+            throw new RewardFlowDatabaseUnavailableException(
+                "RewardFlow could not connect to PostgreSQL. Start it with 'docker compose up -d --wait' and try again.",
+                exception);
+        }
     }
+
+    private static bool ContainsNpgsqlFailure(Exception exception) =>
+        exception is NpgsqlException ||
+        exception.InnerException is not null && ContainsNpgsqlFailure(exception.InnerException);
 }
+
+/// <summary>Operational failure raised when startup migrations cannot reach PostgreSQL.</summary>
+public sealed class RewardFlowDatabaseUnavailableException(string message, Exception innerException)
+    : Exception(message, innerException);

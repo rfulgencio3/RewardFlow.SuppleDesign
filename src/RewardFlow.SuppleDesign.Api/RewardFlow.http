@@ -14,13 +14,13 @@ GET {{host}}/api/wallets/{{wallet}}
 POST {{host}}/api/wallets/{{wallet}}/credit
 Content-Type: application/json
 
-{ "points": 100 }
+{ "operationId": "11111111-1111-4111-8111-111111111111", "points": 100, "reason": "Purchase reward" }
 
 ### Redeem points
 POST {{host}}/api/wallets/{{wallet}}/debit
 Content-Type: application/json
 
-{ "points": 40 }
+{ "operationId": "22222222-2222-4222-8222-222222222222", "points": 40, "reason": "Gift redemption" }
 
 ### Check the balance (60 after the preceding requests)
 GET {{host}}/api/wallets/{{wallet}}/balance
@@ -28,11 +28,14 @@ GET {{host}}/api/wallets/{{wallet}}/balance
 ### Check affordability without changing the balance
 GET {{host}}/api/wallets/{{wallet}}/can-afford?requiredPoints=60
 
+### Read the immutable transaction ledger
+GET {{host}}/api/wallets/{{wallet}}/transactions?page=1&pageSize=20
+
 ### Rejected overdraft (422; balance stays 60)
 POST {{host}}/api/wallets/{{wallet}}/debit
 Content-Type: application/json
 
-{ "points": 61 }
+{ "operationId": "33333333-3333-4333-8333-333333333333", "points": 61, "reason": "Overspend example" }
 
 ### Suspend redemptions; credits remain accepted
 POST {{host}}/api/wallets/{{wallet}}/suspend

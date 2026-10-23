@@ -16,10 +16,13 @@ public sealed class WalletsController(
     ICheckWalletAffordability checkAffordability,
     ISuspendRewardsWallet suspendWallet,
     IReactivateRewardsWallet reactivateWallet,
-    ICloseRewardsWallet closeWallet) : ControllerBase
+    ICloseRewardsWallet closeWallet,
+    IListRewardTransactions listTransactions) : ControllerBase
 {
     /// <summary>Opens a named rewards wallet with generated identity, active status and zero balance.</summary>
     [HttpPost]
+    [ProducesResponseType<OpenWalletResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<OpenWalletResponse>> Open(
         OpenWalletRequest request,
         CancellationToken cancellationToken)
@@ -33,6 +36,8 @@ public sealed class WalletsController(
 
     /// <summary>Gets the wallet's name, lifecycle state, creation time and balance.</summary>
     [HttpGet("{id:guid}")]
+    [ProducesResponseType<WalletDetailsResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<WalletDetailsResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var result = await getWallet.ExecuteAsync(id, cancellationToken);
@@ -46,18 +51,30 @@ public sealed class WalletsController(
 
     /// <summary>Credits earned points to a rewards wallet.</summary>
     [HttpPost("{id:guid}/credit")]
-    public async Task<ActionResult<WalletBalanceResponse>> Credit(Guid id, PointsRequest request, CancellationToken cancellationToken)
+    [ProducesResponseType<RewardMovementResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<RewardMovementResponse>> Credit(Guid id, RewardMovementRequest request, CancellationToken cancellationToken)
     {
-        var result = await creditPoints.ExecuteAsync(id, request.Points!.Value, cancellationToken);
-        return Ok(new WalletBalanceResponse(result.Points));
+        var result = await creditPoints.ExecuteAsync(id, request.OperationId!.Value, request.Points!.Value,
+            request.Reason!, cancellationToken);
+        return Ok(ToResponse(result));
     }
 
     /// <summary>Debits redeemed points from a rewards wallet.</summary>
     [HttpPost("{id:guid}/debit")]
-    public async Task<ActionResult<WalletBalanceResponse>> Debit(Guid id, PointsRequest request, CancellationToken cancellationToken)
+    [ProducesResponseType<RewardMovementResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<RewardMovementResponse>> Debit(Guid id, RewardMovementRequest request, CancellationToken cancellationToken)
     {
-        var result = await debitPoints.ExecuteAsync(id, request.Points!.Value, cancellationToken);
-        return Ok(new WalletBalanceResponse(result.Points));
+        var result = await debitPoints.ExecuteAsync(id, request.OperationId!.Value, request.Points!.Value,
+            request.Reason!, cancellationToken);
+        return Ok(ToResponse(result));
     }
 
     /// <summary>Gets the current rewards wallet balance.</summary>
@@ -108,4 +125,22 @@ public sealed class WalletsController(
         await closeWallet.ExecuteAsync(id, cancellationToken);
         return NoContent();
     }
+
+    /// <summary>Lists immutable reward movements in reverse chronological order.</summary>
+    [HttpGet("{id:guid}/transactions")]
+    [ProducesResponseType<RewardTransactionPageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RewardTransactionPageResponse>> Transactions(Guid id,
+        [FromQuery, System.ComponentModel.DataAnnotations.Range(1, 1_000_000)] int page = 1,
+        [FromQuery, System.ComponentModel.DataAnnotations.Range(1, 100)] int pageSize = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await listTransactions.ExecuteAsync(id, page, pageSize, cancellationToken);
+        return Ok(new RewardTransactionPageResponse(result.Items.Select(ToResponse).ToArray(), result.Page,
+            result.PageSize));
+    }
+
+    private static RewardMovementResponse ToResponse(RewardMovement movement) => new(movement.OperationId,
+        movement.Type, movement.Points, movement.Reason, movement.OccurredAtUtc, movement.BalanceAfter);
 }

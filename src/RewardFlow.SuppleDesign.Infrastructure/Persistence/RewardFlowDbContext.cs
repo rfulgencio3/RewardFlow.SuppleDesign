@@ -8,6 +8,8 @@ public sealed class RewardFlowDbContext(DbContextOptions<RewardFlowDbContext> op
 {
     /// <summary>Stored wallet state used only by the PostgreSQL adapter.</summary>
     internal DbSet<RewardsWalletState> RewardsWallets => Set<RewardsWalletState>();
+    /// <summary>Immutable movement records used by the PostgreSQL adapter.</summary>
+    internal DbSet<RewardTransactionState> RewardTransactions => Set<RewardTransactionState>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

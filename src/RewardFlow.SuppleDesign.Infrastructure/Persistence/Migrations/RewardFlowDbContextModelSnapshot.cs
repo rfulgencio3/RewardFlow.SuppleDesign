@@ -22,6 +22,54 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransactionState", b =>
+                {
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<long>("BalanceAfter")
+                        .HasColumnType("bigint")
+                        .HasColumnName("balance_after");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<long>("Points")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reason");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("WalletId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("wallet_id");
+
+                    b.HasKey("OperationId");
+
+                    b.HasIndex("WalletId", "OccurredAtUtc");
+
+                    b.ToTable("reward_transactions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reward_transactions_balance_non_negative", "balance_after >= 0");
+
+                            t.HasCheckConstraint("ck_reward_transactions_points_positive", "points > 0");
+
+                            t.HasCheckConstraint("ck_reward_transactions_reason_not_blank", "length(btrim(reason)) > 0");
+
+                            t.HasCheckConstraint("ck_reward_transactions_type_valid", "type BETWEEN 0 AND 1");
+                        });
+                });
+
             modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardsWalletState", b =>
                 {
                     b.Property<Guid>("Id")
@@ -62,6 +110,17 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_rewards_wallets_status_valid", "status BETWEEN 0 AND 2");
                         });
+                });
+
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransactionState", b =>
+                {
+                    b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardsWalletState", "Wallet")
+                        .WithMany()
+                        .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Wallet");
                 });
 #pragma warning restore 612, 618
         }

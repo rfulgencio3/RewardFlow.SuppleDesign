@@ -39,9 +39,19 @@ builder.Services.AddScoped<ICheckWalletAffordability, CheckWalletAffordability>(
 builder.Services.AddScoped<ISuspendRewardsWallet, SuspendRewardsWallet>();
 builder.Services.AddScoped<IReactivateRewardsWallet, ReactivateRewardsWallet>();
 builder.Services.AddScoped<ICloseRewardsWallet, CloseRewardsWallet>();
+builder.Services.AddScoped<IListRewardTransactions, ListRewardTransactions>();
 
 var app = builder.Build();
-await app.Services.ApplyRewardFlowMigrationsAsync();
+try
+{
+    await app.Services.ApplyRewardFlowMigrationsAsync();
+}
+catch (RewardFlowDatabaseUnavailableException exception)
+{
+    app.Logger.LogCritical(exception,
+        "PostgreSQL is unavailable. Start the local database with: docker compose up -d --wait");
+    throw;
+}
 app.UseExceptionHandler();
 app.UseSwagger();
 app.UseSwaggerUI(options =>

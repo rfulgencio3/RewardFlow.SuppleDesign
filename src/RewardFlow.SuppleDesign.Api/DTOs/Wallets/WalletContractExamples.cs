@@ -16,10 +16,14 @@ public sealed class WalletContractExamples : ISchemaFilter
             name.Example = new OpenApiString("Primary rewards");
         }
 
-        if (context.Type == typeof(PointsRequest) &&
-            schema.Properties.TryGetValue("points", out var points))
+        if (context.Type == typeof(RewardMovementRequest))
         {
-            points.Example = new OpenApiLong(100);
+            if (schema.Properties.TryGetValue("operationId", out var operationId))
+                operationId.Example = new OpenApiString("4fdbddf1-ef8a-49f7-82d5-6164a7434023");
+            if (schema.Properties.TryGetValue("points", out var points))
+                points.Example = new OpenApiLong(100);
+            if (schema.Properties.TryGetValue("reason", out var reason))
+                reason.Example = new OpenApiString("Purchase reward");
         }
     }
 }
