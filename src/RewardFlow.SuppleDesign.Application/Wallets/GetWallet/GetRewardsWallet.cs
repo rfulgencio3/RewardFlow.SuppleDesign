@@ -20,7 +20,7 @@ public sealed class GetRewardsWallet(IRewardsWalletRepository repository) : IGet
         return new(
             wallet.Id,
             wallet.Name.Value,
-            wallet.Status.ToString().ToLowerInvariant(),
+            wallet.Status,
             wallet.CreatedAtUtc,
             wallet.Balance.Value);
     }

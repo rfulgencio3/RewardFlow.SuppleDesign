@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc.Testing;
 using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
+using RewardFlow.SuppleDesign.Domain.Entities;
 
 namespace RewardFlow.SuppleDesign.Tests;
 
@@ -10,6 +12,11 @@ namespace RewardFlow.SuppleDesign.Tests;
 [Collection(PostgresDatabaseCollection.Name)]
 public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program>>
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+
     private readonly WebApplicationFactory<Program> factory;
     private readonly HttpClient client;
 
@@ -46,6 +53,10 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
             100,
             schemas.GetProperty(nameof(PointsRequest)).GetProperty("properties")
                 .GetProperty("points").GetProperty("example").GetInt64());
+        var statusSchema = schemas.GetProperty(nameof(RewardsWalletStatus));
+        Assert.Equal(
+            ["active", "suspended", "closed"],
+            statusSchema.GetProperty("enum").EnumerateArray().Select(value => value.GetString()));
     }
 
     /// <summary>Intention-Revealing Interfaces: complete earned-points and redemption journey.</summary>
@@ -53,10 +64,10 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     public async Task WalletJourneyAndOverdraftProtection()
     {
         var (walletId, path) = await OpenWalletAsync("Primary rewards");
-        var details = await client.GetFromJsonAsync<WalletDetailsResponse>(path);
+        var details = await client.GetFromJsonAsync<WalletDetailsResponse>(path, JsonOptions);
         Assert.Equal(walletId, details!.WalletId);
         Assert.Equal("Primary rewards", details.Name);
-        Assert.Equal("active", details.Status);
+        Assert.Equal(RewardsWalletStatus.Active, details.Status);
         Assert.Equal(0, details.Points);
         Assert.Equal(TimeSpan.Zero, details.CreatedAtUtc.Offset);
 
@@ -164,7 +175,9 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal(HttpStatusCode.Conflict,
             (await client.PostAsJsonAsync(path + "/credit", new { points = 1 })).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(path + "/close", null)).StatusCode);
-        Assert.Equal("closed", (await client.GetFromJsonAsync<WalletDetailsResponse>(path))!.Status);
+        Assert.Equal(
+            RewardsWalletStatus.Closed,
+            (await client.GetFromJsonAsync<WalletDetailsResponse>(path, JsonOptions))!.Status);
     }
 
     private async Task<(Guid WalletId, string Path)> OpenWalletAsync(string name)

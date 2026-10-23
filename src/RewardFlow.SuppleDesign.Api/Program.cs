@@ -1,4 +1,6 @@
 using Microsoft.OpenApi.Models;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Api.Errors;
 using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
@@ -7,7 +9,10 @@ using RewardFlow.SuppleDesign.Infrastructure;
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("RewardFlow")
     ?? throw new InvalidOperationException("Connection string 'RewardFlow' is required.");
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {

@@ -1,3 +1,5 @@
+using RewardFlow.SuppleDesign.Domain.Entities;
+
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
 /// <summary>Intention-Revealing Interfaces: application result independent of HTTP contracts.</summary>
@@ -11,7 +13,7 @@ public sealed record WalletOpened(Guid WalletId);
 public sealed record WalletDetails(
     Guid WalletId,
     string Name,
-    string Status,
+    RewardsWalletStatus Status,
     DateTimeOffset CreatedAtUtc,
     long Points);
 
