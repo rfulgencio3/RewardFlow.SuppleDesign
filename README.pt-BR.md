@@ -25,9 +25,6 @@ Uma API executável de fidelidade e pontos de recompensa que demonstra os padrõ
 
 O objetivo é tornar o código de negócio fácil de ler, compreender e modificar. Conceitos pequenos e explícitos executam as regras do domínio; os casos de uso da aplicação coordenam esses conceitos; os adaptadores cuidam de HTTP e persistência.
 
-> [!NOTE]
-> Este é um projeto educacional executável, com validação real, proteção contra concorrência e testes de integração. Seu escopo é intencionalmente menor que o de uma plataforma de fidelidade em produção.
-
 | Visão geral | Escolha |
 | --- | --- |
 | Runtime | .NET 8 e ASP.NET Core Web API |
@@ -439,7 +436,7 @@ erDiagram
     }
 ~~~
 
-points representa o Value Object RewardPoints de forma achatada. revision pertence à coordenação da persistência, não ao agregado. As duas colunas numéricas têm constraints que impedem valores negativos. A tabela técnica __EFMigrationsHistory foi omitida do DER.
+points representa o Value Object RewardPoints de forma achatada. revision pertence à coordenação da persistência, não ao agregado. As duas colunas numéricas têm constraints que impedem valores negativos.
 
 ### Migrations
 
