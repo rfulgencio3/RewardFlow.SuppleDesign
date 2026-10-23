@@ -25,9 +25,6 @@ A runnable loyalty and reward-points API demonstrating the Supple Design pattern
 
 The goal is to make business code easy to read, reason about and change. Small, explicit domain concepts do the business work; application use cases coordinate them; adapters handle HTTP and storage.
 
-> [!NOTE]
-> This is an executable teaching project with real validation, concurrency protection and integration tests. It is intentionally smaller than a production loyalty platform.
-
 | At a glance | Choice |
 | --- | --- |
 | Runtime | .NET 8 and ASP.NET Core Web API |
@@ -492,7 +489,7 @@ ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic req
 
 Opening inserts revision `0`; PostgreSQL's primary key makes duplicate opening atomic. Saving issues one conditional update matching both `id` and the expected `revision`, then increments the revision. If another command has already saved that snapshot, zero rows are updated and the application returns 409. A failed domain operation never reaches persistence.
 
-When two updates race, one can return 409. The client should reload the balance and reconsider/retry the operation. The demo does not automatically retry commands or implement idempotency keys. Repeating a successful credit/debit applies it again. A production adapter could implement the same revision contract with a database concurrency token and a transaction.
+When two updates race, one can return 409. The client should reload the balance and reconsider/retry the operation. The demo does not automatically retry commands or implement idempotency keys. Repeating a successful credit/debit applies it again.
 
 The connection string is read from `ConnectionStrings:RewardFlow`. Local settings match `compose.yaml`; deployments can override it with the `ConnectionStrings__RewardFlow` environment variable. The checked-in password is only a local development credential.
 
@@ -509,7 +506,7 @@ erDiagram
     }
 ```
 
-Both numeric columns have non-negative database check constraints. EF Core also creates `__EFMigrationsHistory`; it is tooling metadata and is intentionally omitted from the domain-oriented ERD.
+Both numeric columns have non-negative database check constraints.
 
 ### Migrations
 
@@ -536,8 +533,6 @@ docker compose down
 # Delete the local database volume and start from an empty database.
 docker compose down --volumes
 ```
-
-The sample does not include authentication, authorization, a ledger, member enrollment, reward expiration or transaction-wide integration events. Add those around the explicit business model and ports as requirements evolve. The local HTTP and database credentials are for running the demo; deployment security is outside this example's scope.
 
 ## Tests
 
