@@ -21,7 +21,12 @@ public sealed class PostgresRewardsWalletRepository(RewardFlowDbContext context)
         return stored is null
             ? null
             : new WalletSnapshot(
-                new RewardsWallet(stored.Id, new RewardPoints(stored.Points)),
+                new RewardsWallet(
+                    stored.Id,
+                    new WalletName(stored.Name),
+                    new RewardPoints(stored.Points),
+                    stored.Status,
+                    stored.CreatedAtUtc),
                 stored.Revision);
     }
 
@@ -32,6 +37,9 @@ public sealed class PostgresRewardsWalletRepository(RewardFlowDbContext context)
         var stored = new RewardsWalletState
         {
             Id = wallet.Id,
+            Name = wallet.Name.Value,
+            Status = wallet.Status,
+            CreatedAtUtc = wallet.CreatedAtUtc,
             Points = wallet.Balance.Value,
             Revision = 0
         };
@@ -62,6 +70,7 @@ public sealed class PostgresRewardsWalletRepository(RewardFlowDbContext context)
             .Where(stored => stored.Id == wallet.Id && stored.Revision == expectedRevision)
             .ExecuteUpdateAsync(update => update
                 .SetProperty(stored => stored.Points, wallet.Balance.Value)
+                .SetProperty(stored => stored.Status, wallet.Status)
                 .SetProperty(stored => stored.Revision, nextRevision), cancellationToken);
 
         return affectedRows == 1;

@@ -103,11 +103,13 @@ Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta 
 
 | Objetivo | Requisição | Entrada | Resultado esperado |
 | --- | --- | --- | --- |
-| Abrir uma carteira | POST /api/wallets/{id} | Novo GUID não vazio na rota | 201 Created, zero pontos e header Location para o saldo |
+| Abrir uma carteira | POST /api/wallets | { "name": "Recompensas principais" } | 201 Created, walletId gerado e header Location |
+| Consultar a carteira | GET /api/wallets/{id} | Sem body | 200 OK com nome, status, criação e saldo |
 | Creditar pontos ganhos | POST /api/wallets/{id}/credit | { "points": 100 } | 200 OK com o saldo atualizado |
 | Debitar pontos resgatados | POST /api/wallets/{id}/debit | { "points": 40 } | 200 OK, se houver saldo suficiente |
 | Consultar o saldo | GET /api/wallets/{id}/balance | Sem body | 200 OK com os pontos atuais |
-| Verificar capacidade de pagamento | GET /api/wallets/{id}/can-afford?points=60 | Pontos inteiros não negativos | 200 OK com canAfford; o saldo não muda |
+| Verificar capacidade de pagamento | GET /api/wallets/{id}/can-afford?requiredPoints=60 | Pontos inteiros não negativos | 200 OK com canAfford; o saldo não muda |
+| Suspender / reativar / encerrar | POST /api/wallets/{id}/{ação} | Sem body | 204 No Content após uma transição válida |
 
 <details>
 <summary><strong>PowerShell: abrir, creditar, debitar e consultar uma carteira</strong></summary>
@@ -116,10 +118,12 @@ Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta 
 
 ~~~powershell
 $baseUri = 'http://localhost:5180'
-$walletId = [guid]::NewGuid()
+# A API gera a identidade e a devolve com 201 Created.
+$opened = Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets" `
+    -ContentType 'application/json' -Body '{"name":"Recompensas principais"}'
+$walletId = $opened.walletId
 
-# Abre a carteira: 201 Created, zero pontos e Location para o saldo.
-Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId"
+Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId"
 
 # Ganha 100 pontos: 200 OK.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/credit" `
@@ -132,7 +136,7 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/balance"
 
 # Consulta pura: true, sem alterar os 60 pontos.
-Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?points=60"
+Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?requiredPoints=60"
 
 # Rejeitado: 422 Unprocessable Entity; o saldo permanece em 60.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
@@ -152,8 +156,11 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 | Debit | Remover pontos resgatados de uma carteira existente. |
 | Balance | Pontos de recompensa atualmente disponíveis. |
 | Can Afford | Verificar se o saldo cobre os pontos necessários sem alterar o estado. |
+| Suspend | Bloquear temporariamente resgates, mantendo o recebimento de pontos ganhos. |
+| Reactivate | Devolver uma carteira suspensa ao uso ativo. |
+| Close | Impedir permanentemente novos créditos e resgates. |
 
-Os IDs devem ser GUIDs não vazios. Toda carteira é aberta explicitamente; comandos e consultas nunca criam uma carteira de forma silenciosa. Crédito e débito exigem ao menos um ponto. Um saldo pode ser zero e é permitido debitar exatamente o saldo disponível. CanAfford(RewardPoints.Zero) retorna verdadeiro, enquanto um débito de zero é rejeitado porque um comando precisa movimentar pontos.
+A aplicação gera um ID não vazio e registra o instante de criação em UTC. O nome é normalizado e deve ter entre 1 e 120 caracteres. Novas carteiras começam ativas e sem pontos. Carteiras suspensas aceitam créditos, mas bloqueiam débitos e a capacidade de resgate; carteiras encerradas rejeitam toda movimentação. Crédito e débito exigem ao menos um ponto, e é permitido debitar exatamente o saldo disponível.
 
 RewardPoints usa long e aceita valores de zero a long.MaxValue. Construção negativa, subtração abaixo de zero e soma acima do limite produzem exceções de domínio. Operações rejeitadas preservam os valores originais e o saldo da carteira.
 
@@ -213,7 +220,7 @@ flowchart LR
     subgraph Domain["Domain · Núcleo de Negócio"]
         WalletPort["IRewardsWallet<br/>Credit · Debit · CanAfford"]
         Wallet["RewardsWallet<br/>Aggregate Root"]
-        Points["RewardPoints<br/>Value Object imutável"]
+        Points["RewardPoints + WalletName<br/>Value Objects imutáveis"]
         Rules["DomainAssertions<br/>DomainException"]
         RepositoryPort["IRewardsWalletRepository<br/>Porta de saída"]
         WalletPort --> Wallet
@@ -257,8 +264,12 @@ RewardFlow.SuppleDesign/
 │
 ├── src/
 │   ├── RewardFlow.SuppleDesign.Domain/
-│   │   ├── Entities/RewardsWallet.cs             # Aggregate Root
-│   │   ├── ValueObjects/RewardPoints.cs          # Value Object imutável
+│   │   ├── Entities/
+│   │   │   ├── RewardsWallet.cs                  # Aggregate Root e ciclo de vida
+│   │   │   └── RewardsWalletStatus.cs
+│   │   ├── ValueObjects/
+│   │   │   ├── RewardPoints.cs                   # Aritmética imutável
+│   │   │   └── WalletName.cs                     # Nome normalizado
 │   │   ├── Exceptions/DomainException.cs
 │   │   ├── Ports/
 │   │   │   ├── IRewardsWallet.cs                 # Contrato de comportamento
@@ -270,6 +281,8 @@ RewardFlow.SuppleDesign/
 │   │       ├── OpenWallet/
 │   │       ├── CreditPoints/
 │   │       ├── DebitPoints/
+│   │       ├── ChangeStatus/
+│   │       ├── GetWallet/
 │   │       ├── GetBalance/
 │   │       └── CheckAffordability/
 │   ├── RewardFlow.SuppleDesign.Infrastructure/
@@ -283,7 +296,9 @@ RewardFlow.SuppleDesign/
 │   │   └── DependencyInjection.cs
 │   └── RewardFlow.SuppleDesign.Api/
 │       ├── Endpoints/Wallets/WalletsController.cs
-│       ├── DTOs/Wallets/WalletContracts.cs
+│       ├── DTOs/Wallets/
+│       │   ├── WalletContracts.cs
+│       │   └── WalletContractExamples.cs
 │       ├── Errors/ApiExceptionHandler.cs
 │       ├── Program.cs
 │       └── RewardFlow.http
@@ -319,7 +334,7 @@ flowchart LR
         Wallet["RewardsWallet<br/>Entity + Aggregate Root"]
         Points["RewardPoints<br/>Value Object imutável"]
         Repository["IRewardsWalletRepository<br/>+ Adaptador PostgreSQL"]
-        UseCases["Casos de uso da Application<br/>Open · Credit · Debit · Balance · Affordability"]
+        UseCases["Casos de uso da Application<br/>Open · Credit · Debit · Consultas · Ciclo de vida"]
         Construction["Construtores<br/>Criação simples; sem Factory"]
         Layers["Domain · Application<br/>Infrastructure · API"]
         Controllers["Controllers enxutos<br/>Somente aspectos HTTP"]
@@ -347,7 +362,7 @@ flowchart LR
 | Bloco de DDD | Implementação | Decisão |
 | --- | --- | --- |
 | Entity | RewardsWallet | Possui identidade estável e comportamento que altera seu ciclo de vida. |
-| Value Object | RewardPoints | Não tem identidade, compara por valor e devolve novos valores após operações. |
+| Value Object | RewardPoints e WalletName | Não têm identidade, comparam por valor e protegem suas próprias regras. |
 | Aggregate | RewardsWallet | É a fronteira de consistência para identidade e saldo. |
 | Repository | IRewardsWalletRepository e adaptador PostgreSQL | A porta pertence ao domínio e a tecnologia fica na infraestrutura. |
 | Service | Casos de uso da Application | Coordenam fluxo e persistência; as regras permanecem no domínio. |
@@ -361,11 +376,11 @@ Os diagramas Mermaid são interpretações específicas deste projeto, não repr
 
 | Padrão | Código | Por que importa |
 | --- | --- | --- |
-| Intention-Revealing Interfaces | IRewardsWallet.Credit, Debit, CanAfford e portas nomeadas | O código usa o vocabulário do domínio em vez de setters ou métodos genéricos. |
+| Intention-Revealing Interfaces | Credit, Debit, CanAfford, Suspend, Reactivate, Close e portas nomeadas | O código usa o vocabulário do domínio em vez de setters ou métodos genéricos. |
 | Side-Effect-Free Functions | RewardsWallet.CanAfford; RewardPoints.Add e Subtract | Consultas não alteram estado e cálculos devolvem novos valores imutáveis. |
-| Assertions | DomainAssertions e operações de RewardPoints | Pré-condições e invariantes são verificadas em runtime. |
+| Assertions | DomainAssertions, Value Objects, limites de pontos e transições de status | Pré-condições e invariantes são verificadas em runtime. |
 | Conceptual Contours | Value Object, agregado, casos de uso, controllers e repositório | Cada conceito possui uma razão clara e diferente para mudar. |
-| Standalone Classes | RewardPoints | Reúne valor, igualdade, aritmética e validade sem depender de ORM, DI ou framework web. |
+| Standalone Classes | RewardPoints e WalletName | Reúnem valor e validade sem depender de ORM, DI ou framework web. |
 | Closure of Operations | RewardPoints.Add(RewardPoints) e Subtract(RewardPoints) | Operandos e resultados pertencem ao mesmo conjunto conceitual. |
 
 Por exemplo, new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new RewardPoints(40)) produz 85 pontos sem alterar nenhum operando. RewardsWallet.Credit delega essa aritmética e só substitui o saldo depois de uma validação bem-sucedida.
@@ -375,6 +390,7 @@ Por exemplo, new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new Reward
 | Abstração | Por que existe | Quando reconsiderar |
 | --- | --- | --- |
 | RewardPoints | Centraliza aritmética, limites e igualdade de valor. | Se pontos deixarem de ter regras além do tipo primitivo. |
+| WalletName | Centraliza normalização, obrigatoriedade e limite de tamanho. | Se o nome deixar de possuir regras além de texto livre. |
 | RewardsWallet | Define a fronteira de consistência da carteira. | Se o comportamento se dividir em conceitos independentes. |
 | IRewardsWallet | Expõe um contrato pequeno com linguagem reveladora de intenção. | Se o objetivo didático deixar de exigir o papel explícito. |
 | DomainAssertions | Compartilha invariantes com códigos de erro do domínio. | Se uma regra pertencer a somente um tipo. |
@@ -390,17 +406,23 @@ O projeto não contém generic repository, wrapper de Unit of Work, mediator, fr
 
 | Método | Rota | Body | Sucesso |
 | --- | --- | --- | --- |
-| POST | /api/wallets/{id} | nenhum | 201 e localização do saldo |
+| POST | /api/wallets | {"name":"Recompensas principais"} | 201, ID gerado e localização da carteira |
+| GET | /api/wallets/{id} | nenhum | 200 e dados da carteira |
 | POST | /api/wallets/{id}/credit | {"points":100} | 200 e saldo atualizado |
 | POST | /api/wallets/{id}/debit | {"points":40} | 200 e saldo atualizado |
 | GET | /api/wallets/{id}/balance | nenhum | 200 e saldo atual |
-| GET | /api/wallets/{id}/can-afford?points=60 | nenhum | 200 e resultado da consulta |
+| GET | /api/wallets/{id}/can-afford?requiredPoints=60 | nenhum | 200 e resultado da consulta |
+| POST | /api/wallets/{id}/suspend | nenhum | 204 após suspensão |
+| POST | /api/wallets/{id}/reactivate | nenhum | 204 após reativação |
+| POST | /api/wallets/{id}/close | nenhum | 204 após encerramento definitivo |
+
+A criação devolve apenas `{"walletId":"<guid>"}`; o header `Location` endereça a nova carteira. Comandos e consultas de saldo devolvem `{"points":60}`, pois o ID já aparece na rota.
 
 | Status | Situação |
 | --- | --- |
-| 400 | JSON inválido, pontos ausentes, nulos, fracionários, não positivos ou fora do intervalo de long. |
+| 400 | JSON inválido, nome ausente, vazio ou longo demais, ou pontos ausentes, fracionários, não positivos ou fora do intervalo de long. |
 | 404 | Carteira com ID bem-formado não encontrada. |
-| 409 | Abertura duplicada ou escrita concorrente obsoleta. |
+| 409 | Escrita concorrente obsoleta ou comando incompatível com o status atual. |
 | 422 | Violação de regra, como pontos insuficientes, overflow ou GUID vazio. |
 | 500 | Falha inesperada sem exposição de detalhes internos. |
 
@@ -419,7 +441,7 @@ Falhas esperadas usam application/problem+json e incluem um code estável:
 
 PostgresRewardsWalletRepository implementa a porta pertencente ao domínio usando EF Core e Npgsql. O adaptador converte RewardsWalletState, exclusivo da persistência, em novos objetos RewardsWallet e RewardPoints a cada leitura. O agregado não possui atributos do EF Core, proxies, propriedades de navegação ou construtor voltado à persistência.
 
-Uma carteira é inserida com revisão 0. Ao salvar, o adaptador executa uma atualização condicional por id e pela revision esperada, incrementando a revisão. Se outro comando já tiver salvo o mesmo snapshot, nenhuma linha será atualizada e a aplicação responderá 409.
+Uma carteira é inserida com revisão 0 e a chave primária protege a identidade gerada. Ao salvar, o adaptador executa uma atualização condicional por id e pela revision esperada, incrementando a revisão. Se outro comando já tiver salvo o mesmo snapshot, nenhuma linha será atualizada e a aplicação responderá 409.
 
 A connection string é lida de ConnectionStrings:RewardFlow. Em outros ambientes, use ConnectionStrings__RewardFlow. A senha versionada serve apenas para desenvolvimento local.
 
@@ -429,16 +451,19 @@ A connection string é lida de ConnectionStrings:RewardFlow. Em outros ambientes
 erDiagram
     REWARDS_WALLETS {
         uuid id PK "identidade do agregado"
+        varchar name "nome normalizado"
+        integer status "ativa, suspensa ou encerrada"
+        timestamptz created_at_utc "instante de abertura"
         bigint points "saldo não negativo"
         bigint revision "concorrência otimista"
     }
 ~~~
 
-points representa o Value Object RewardPoints de forma achatada. revision pertence à coordenação da persistência, não ao agregado. As duas colunas numéricas têm constraints que impedem valores negativos.
+WalletName e RewardPoints são armazenados de forma achatada porque pertencem à carteira. revision pertence à coordenação da persistência, não ao agregado. Constraints rejeitam nomes vazios, status desconhecidos, pontos negativos e revisões negativas.
 
 ### Migrations
 
-A migration inicial está versionada em Infrastructure/Persistence/Migrations. Antes de ativar o middleware, Program.cs chama ApplyRewardFlowMigrationsAsync, que executa Database.MigrateAsync.
+As migrations estão versionadas em Infrastructure/Persistence/Migrations, incluindo a evolução incremental de perfil e ciclo de vida. Antes de ativar o middleware, Program.cs chama ApplyRewardFlowMigrationsAsync, que executa Database.MigrateAsync.
 
 Para criar uma migration após alterar o mapeamento:
 
@@ -465,11 +490,13 @@ docker compose down --volumes
 A suíte xUnit cobre:
 
 - Igualdade por valor, aritmética imutável, limites, saldo insuficiente e overflow.
+- Normalização do nome, identidade gerada, criação em UTC e transições do ciclo de vida.
 - Resgate do saldo exato, proteção do saldo zero, identidade vazia e preservação do estado em falhas.
 - Consultas de capacidade de pagamento sem mutação.
 - Orquestração, snapshots desacoplados e rejeição de escritas obsoletas.
 - Mapeamento PostgreSQL, migration no startup, persistência após reinício e atualização condicional por revisão.
 - Rotas e DI reais pelo WebApplicationFactory, contratos, status HTTP e Problem Details.
+- Exemplos claros no Swagger, independentes da implementação da validação HTTP.
 
 Inicie o banco com docker compose up -d --wait antes de executar dotnet test RewardFlow.SuppleDesign.slnx. Os testes da aplicação usam o repositório em memória somente como test double rápido do mesmo contrato.
 
@@ -511,6 +538,7 @@ Este projeto foi inspirado por *Domain-Driven Design: Tackling Complexity in the
 | Código | Foco educacional | Referência |
 | --- | --- | --- |
 | [RewardPoints](src/RewardFlow.SuppleDesign.Domain/ValueObjects/RewardPoints.cs) | Standalone Class, Closure of Operations e Side-Effect-Free Functions | [Capítulo 10](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
+| [WalletName](src/RewardFlow.SuppleDesign.Domain/ValueObjects/WalletName.cs) | Standalone Class e Assertions | [Capítulo 10](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [IRewardsWallet](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWallet.cs) | Intention-Revealing Interfaces | [Capítulo 10](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [DomainAssertions](src/RewardFlow.SuppleDesign.Domain/DomainAssertions.cs) | Assertions e invariantes explícitas | [Capítulo 10](https://www.oreilly.com/library/view/domain-driven-design-tackling/0321125215/ch10.html) |
 | [RewardsWallet](src/RewardFlow.SuppleDesign.Domain/Entities/RewardsWallet.cs) | Conceptual Contours, Entity e Aggregate Root | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |

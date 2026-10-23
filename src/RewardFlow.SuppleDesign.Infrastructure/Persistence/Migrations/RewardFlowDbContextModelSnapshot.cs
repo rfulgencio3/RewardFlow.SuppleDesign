@@ -28,6 +28,16 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at_utc");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
                     b.Property<long>("Points")
                         .HasColumnType("bigint")
                         .HasColumnName("points");
@@ -36,13 +46,21 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("revision");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
                     b.HasKey("Id");
 
                     b.ToTable("rewards_wallets", null, t =>
                         {
+                            t.HasCheckConstraint("ck_rewards_wallets_name_not_blank", "length(btrim(name)) > 0");
+
                             t.HasCheckConstraint("ck_rewards_wallets_points_non_negative", "points >= 0");
 
                             t.HasCheckConstraint("ck_rewards_wallets_revision_non_negative", "revision >= 0");
+
+                            t.HasCheckConstraint("ck_rewards_wallets_status_valid", "status BETWEEN 0 AND 2");
                         });
                 });
 #pragma warning restore 612, 618

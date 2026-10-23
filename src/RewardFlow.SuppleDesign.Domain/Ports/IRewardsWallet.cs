@@ -13,6 +13,12 @@ public interface IRewardsWallet
 {
     /// <summary>Intention-Revealing Interfaces: the wallet's unique identity.</summary>
     Guid Id { get; }
+    /// <summary>Intention-Revealing Interfaces: human-readable wallet name.</summary>
+    ValueObjects.WalletName Name { get; }
+    /// <summary>Intention-Revealing Interfaces: current wallet lifecycle state.</summary>
+    Entities.RewardsWalletStatus Status { get; }
+    /// <summary>Intention-Revealing Interfaces: UTC instant at which the wallet was opened.</summary>
+    DateTimeOffset CreatedAtUtc { get; }
     /// <summary>Intention-Revealing Interfaces: currently available reward points.</summary>
     RewardPoints Balance { get; }
     /// <summary>Intention-Revealing Interfaces: credits earned points to this wallet.</summary>
@@ -21,4 +27,10 @@ public interface IRewardsWallet
     void Debit(RewardPoints redeemedPoints);
     /// <summary>Side-Effect-Free Functions: checks affordability without changing any state.</summary>
     bool CanAfford(RewardPoints requiredPoints);
+    /// <summary>Intention-Revealing Interfaces: temporarily blocks redemptions.</summary>
+    void Suspend();
+    /// <summary>Intention-Revealing Interfaces: returns a suspended wallet to active use.</summary>
+    void Reactivate();
+    /// <summary>Intention-Revealing Interfaces: permanently closes the wallet.</summary>
+    void Close();
 }

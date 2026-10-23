@@ -27,7 +27,6 @@ public sealed class CheckWalletAffordability(IRewardsWalletRepository repository
         var snapshot = await WalletPersistence.LoadAsync(repository, walletId, cancellationToken);
 
         return new(
-            snapshot.Wallet.Id,
             snapshot.Wallet.Balance.Value,
             required.Value,
             snapshot.Wallet.CanAfford(required));

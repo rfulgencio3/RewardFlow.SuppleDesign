@@ -17,6 +17,6 @@ public sealed class GetWalletBalance(IRewardsWalletRepository repository) : IGet
     public async Task<WalletBalance> ExecuteAsync(Guid walletId, CancellationToken cancellationToken = default)
     {
         var snapshot = await WalletPersistence.LoadAsync(repository, walletId, cancellationToken);
-        return new(snapshot.Wallet.Id, snapshot.Wallet.Balance.Value);
+        return new(snapshot.Wallet.Balance.Value);
     }
 }

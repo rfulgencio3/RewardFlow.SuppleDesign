@@ -22,11 +22,15 @@ public sealed class PostgresRepositoryTests
             .Options;
         var walletId = Guid.NewGuid();
 
+        var openedAt = new DateTimeOffset(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
         await using (var setupContext = new RewardFlowDbContext(options))
         {
             await setupContext.Database.MigrateAsync();
             var setupRepository = new PostgresRewardsWalletRepository(setupContext);
-            Assert.True(await setupRepository.TryAddAsync(new RewardsWallet(walletId)));
+            Assert.True(await setupRepository.TryAddAsync(new RewardsWallet(
+                walletId,
+                new WalletName("PostgreSQL wallet"),
+                openedAt)));
         }
 
         await using var firstContext = new RewardFlowDbContext(options);
@@ -36,6 +40,7 @@ public sealed class PostgresRepositoryTests
         var first = (await firstRepository.FindAsync(walletId))!;
         var stale = (await secondRepository.FindAsync(walletId))!;
         first.Wallet.Credit(new RewardPoints(10));
+        first.Wallet.Close();
         stale.Wallet.Credit(new RewardPoints(20));
 
         Assert.True(await firstRepository.TrySaveAsync(first.Wallet, first.Revision));
@@ -44,6 +49,9 @@ public sealed class PostgresRepositoryTests
         await using var verificationContext = new RewardFlowDbContext(options);
         var saved = await new PostgresRewardsWalletRepository(verificationContext).FindAsync(walletId);
         Assert.Equal(10, saved!.Wallet.Balance.Value);
+        Assert.Equal("PostgreSQL wallet", saved.Wallet.Name.Value);
+        Assert.Equal(RewardsWalletStatus.Closed, saved.Wallet.Status);
+        Assert.Equal(openedAt, saved.Wallet.CreatedAtUtc);
         Assert.Equal(1, saved.Revision);
     }
 }

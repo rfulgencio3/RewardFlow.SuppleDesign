@@ -1,8 +1,14 @@
 @host = http://localhost:5180
-@wallet = 7dc7c3c8-926a-483b-96cd-4502678c38d5
+@wallet = replace-with-the-id-returned-by-open
 
-### Open a wallet before crediting or debiting
-POST {{host}}/api/wallets/{{wallet}}
+### Open a wallet; copy walletId from the 201 response into @wallet
+POST {{host}}/api/wallets
+Content-Type: application/json
+
+{ "name": "Primary rewards" }
+
+### Read wallet details
+GET {{host}}/api/wallets/{{wallet}}
 
 ### Earn points
 POST {{host}}/api/wallets/{{wallet}}/credit
@@ -20,10 +26,19 @@ Content-Type: application/json
 GET {{host}}/api/wallets/{{wallet}}/balance
 
 ### Check affordability without changing the balance
-GET {{host}}/api/wallets/{{wallet}}/can-afford?points=60
+GET {{host}}/api/wallets/{{wallet}}/can-afford?requiredPoints=60
 
 ### Rejected overdraft (422; balance stays 60)
 POST {{host}}/api/wallets/{{wallet}}/debit
 Content-Type: application/json
 
 { "points": 61 }
+
+### Suspend redemptions; credits remain accepted
+POST {{host}}/api/wallets/{{wallet}}/suspend
+
+### Reactivate redemptions
+POST {{host}}/api/wallets/{{wallet}}/reactivate
+
+### Permanently close the wallet
+POST {{host}}/api/wallets/{{wallet}}/close

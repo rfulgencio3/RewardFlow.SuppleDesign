@@ -7,6 +7,16 @@ namespace RewardFlow.SuppleDesign.Tests;
 /// <summary>Executable examples of Assertions, Closure of Operations and Side-Effect-Free Functions.</summary>
 public sealed class DomainTests
 {
+    private static readonly DateTimeOffset OpenedAt = new(2026, 1, 2, 3, 4, 5, TimeSpan.Zero);
+
+    private static RewardsWallet NewWallet(RewardPoints? balance = null) =>
+        new(
+            Guid.NewGuid(),
+            new WalletName("Primary rewards"),
+            balance ?? RewardPoints.Zero,
+            RewardsWalletStatus.Active,
+            OpenedAt);
+
     /// <summary>Closure of Operations: immutable arithmetic remains inside the RewardPoints type.</summary>
     [Fact]
     public void ArithmeticReturnsNewValuesAndPreservesOperands()
@@ -44,7 +54,7 @@ public sealed class DomainTests
     [Fact]
     public void CanAffordIsPureAndIncludesTheExactBalance()
     {
-        var wallet = new RewardsWallet(Guid.NewGuid(), new RewardPoints(100));
+        var wallet = NewWallet(new RewardPoints(100));
         var before = wallet.Balance;
         Assert.True(wallet.CanAfford(new RewardPoints(100)));
         Assert.True(wallet.CanAfford(RewardPoints.Zero));
@@ -57,7 +67,7 @@ public sealed class DomainTests
     [Fact]
     public void RejectedOperationsDoNotChangeBalance()
     {
-        var wallet = new RewardsWallet(Guid.NewGuid());
+        var wallet = NewWallet();
         Assert.Throws<DomainException>(() => wallet.Debit(new RewardPoints(1)));
         Assert.Throws<DomainException>(() => wallet.Credit(RewardPoints.Zero));
         wallet.Credit(new RewardPoints(long.MaxValue));
@@ -72,5 +82,38 @@ public sealed class DomainTests
     /// <summary>Assertions: empty wallet identity is prohibited at the aggregate boundary.</summary>
     [Fact]
     public void WalletRequiresAnIdentity() =>
-        Assert.Equal("invalid_wallet_id", Assert.Throws<DomainException>(() => new RewardsWallet(Guid.Empty)).Code);
+        Assert.Equal("invalid_wallet_id", Assert.Throws<DomainException>(() =>
+            new RewardsWallet(Guid.Empty, new WalletName("Primary rewards"), OpenedAt)).Code);
+
+    /// <summary>Standalone Class: wallet names normalize valid input and reject meaningless values.</summary>
+    [Fact]
+    public void WalletNameOwnsItsNormalizationAndValidity()
+    {
+        Assert.Equal("Primary rewards", new WalletName("  Primary rewards  ").Value);
+        Assert.Equal("wallet_name_required",
+            Assert.Throws<DomainException>(() => new WalletName("   ")).Code);
+        Assert.Equal("wallet_name_too_long",
+            Assert.Throws<DomainException>(() => new WalletName(new string('x', WalletName.MaximumLength + 1))).Code);
+    }
+
+    /// <summary>Assertions: lifecycle transitions protect redemption while preserving earned credits.</summary>
+    [Fact]
+    public void LifecycleStateGovernsWalletBehavior()
+    {
+        var wallet = NewWallet(new RewardPoints(100));
+        wallet.Suspend();
+        wallet.Credit(new RewardPoints(10));
+        Assert.False(wallet.CanAfford(new RewardPoints(1)));
+        Assert.Equal("wallet_not_active",
+            Assert.Throws<DomainException>(() => wallet.Debit(new RewardPoints(1))).Code);
+
+        wallet.Reactivate();
+        wallet.Debit(new RewardPoints(10));
+        wallet.Close();
+        Assert.Equal(RewardsWalletStatus.Closed, wallet.Status);
+        Assert.Equal("wallet_closed",
+            Assert.Throws<DomainException>(() => wallet.Credit(new RewardPoints(1))).Code);
+        Assert.Equal("invalid_wallet_status_transition",
+            Assert.Throws<DomainException>(wallet.Reactivate).Code);
+    }
 }

@@ -37,17 +37,29 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         var document = await client.GetFromJsonAsync<JsonElement>("/swagger/v1/swagger.json");
         Assert.Equal("RewardFlow API", document.GetProperty("info").GetProperty("title").GetString());
         Assert.Equal("v1", document.GetProperty("info").GetProperty("version").GetString());
+        var schemas = document.GetProperty("components").GetProperty("schemas");
+        Assert.Equal(
+            "Primary rewards",
+            schemas.GetProperty(nameof(OpenWalletRequest)).GetProperty("properties")
+                .GetProperty("name").GetProperty("example").GetString());
+        Assert.Equal(
+            100,
+            schemas.GetProperty(nameof(PointsRequest)).GetProperty("properties")
+                .GetProperty("points").GetProperty("example").GetInt64());
     }
 
     /// <summary>Intention-Revealing Interfaces: complete earned-points and redemption journey.</summary>
     [Fact]
     public async Task WalletJourneyAndOverdraftProtection()
     {
-        var path = $"/api/wallets/{Guid.NewGuid()}";
-        var opened = await client.PostAsync(path, null);
-        Assert.Equal(HttpStatusCode.Created, opened.StatusCode);
-        Assert.EndsWith(path + "/balance", opened.Headers.Location!.ToString());
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(path, null)).StatusCode);
+        var (walletId, path) = await OpenWalletAsync("Primary rewards");
+        var details = await client.GetFromJsonAsync<WalletDetailsResponse>(path);
+        Assert.Equal(walletId, details!.WalletId);
+        Assert.Equal("Primary rewards", details.Name);
+        Assert.Equal("active", details.Status);
+        Assert.Equal(0, details.Points);
+        Assert.Equal(TimeSpan.Zero, details.CreatedAtUtc.Offset);
+
         var credited = await client.PostAsJsonAsync(path + "/credit", new { points = 100 });
         Assert.Equal(HttpStatusCode.OK, credited.StatusCode);
         Assert.Equal(100, (await credited.Content.ReadFromJsonAsync<WalletBalanceResponse>())!.Points);
@@ -62,12 +74,12 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         var balance = await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance");
         Assert.Equal(60, balance!.Points);
 
-        var affordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?points=60");
+        var affordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?requiredPoints=60");
         Assert.True(affordable!.CanAfford);
-        Assert.Equal(60, affordable.Balance);
+        Assert.Equal(60, affordable.AvailablePoints);
         Assert.Equal(60, affordable.RequiredPoints);
 
-        var unaffordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?points=61");
+        var unaffordable = await client.GetFromJsonAsync<WalletAffordabilityResponse>(path + "/can-afford?requiredPoints=61");
         Assert.False(unaffordable!.CanAfford);
         Assert.Equal(60, (await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance"))!.Points);
 
@@ -78,8 +90,8 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     /// <summary>HTTP validation: affordability requires an explicit non-negative whole-point amount.</summary>
     [Theory]
     [InlineData("")]
-    [InlineData("?points=-1")]
-    [InlineData("?points=1.5")]
+    [InlineData("?requiredPoints=-1")]
+    [InlineData("?requiredPoints=1.5")]
     public async Task InvalidAffordabilityQueryReturnsBadRequest(string query)
     {
         var response = await client.GetAsync($"/api/wallets/{Guid.NewGuid()}/can-afford{query}");
@@ -106,11 +118,62 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task EmptyWalletAndEmptyIdentityAreProtected()
     {
-        var path = $"/api/wallets/{Guid.NewGuid()}";
-        Assert.Equal(HttpStatusCode.Created, (await client.PostAsync(path, null)).StatusCode);
+        var (_, path) = await OpenWalletAsync("Empty wallet");
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
             (await client.PostAsJsonAsync(path + "/debit", new { points = 1 })).StatusCode);
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
-            (await client.PostAsync($"/api/wallets/{Guid.Empty}", null)).StatusCode);
+            (await client.GetAsync($"/api/wallets/{Guid.Empty}")).StatusCode);
+    }
+
+    /// <summary>HTTP validation: opening requires a meaningful bounded name.</summary>
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"name\":null}")]
+    [InlineData("{\"name\":\"   \"}")]
+    public async Task InvalidWalletNameReturnsBadRequest(string json)
+    {
+        using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/wallets", content)).StatusCode);
+    }
+
+    /// <summary>HTTP validation: the public name limit matches the WalletName value object.</summary>
+    [Fact]
+    public async Task WalletNameAboveMaximumLengthReturnsBadRequest()
+    {
+        var response = await client.PostAsJsonAsync("/api/wallets", new { name = new string('x', 121) });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>Assertions: lifecycle endpoints expose aggregate transitions and state conflicts.</summary>
+    [Fact]
+    public async Task WalletLifecycleControlsMovements()
+    {
+        var (_, path) = await OpenWalletAsync("Lifecycle wallet");
+        await client.PostAsJsonAsync(path + "/credit", new { points = 100 });
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/suspend", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync(path + "/credit", new { points = 10 })).StatusCode);
+        var blockedDebit = await client.PostAsJsonAsync(path + "/debit", new { points = 10 });
+        Assert.Equal(HttpStatusCode.Conflict, blockedDebit.StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/reactivate", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsJsonAsync(path + "/debit", new { points = 10 })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/close", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict,
+            (await client.PostAsJsonAsync(path + "/credit", new { points = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(path + "/close", null)).StatusCode);
+        Assert.Equal("closed", (await client.GetFromJsonAsync<WalletDetailsResponse>(path))!.Status);
+    }
+
+    private async Task<(Guid WalletId, string Path)> OpenWalletAsync(string name)
+    {
+        var opened = await client.PostAsJsonAsync("/api/wallets", new { name });
+        Assert.Equal(HttpStatusCode.Created, opened.StatusCode);
+        var response = (await opened.Content.ReadFromJsonAsync<OpenWalletResponse>())!;
+        var path = $"/api/wallets/{response.WalletId}";
+        Assert.Equal(path, opened.Headers.Location!.AbsolutePath);
+        return (response.WalletId, path);
     }
 }
