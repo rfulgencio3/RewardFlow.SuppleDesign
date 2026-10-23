@@ -39,6 +39,7 @@ O objetivo é tornar o código de negócio fácil de ler, compreender e modifica
 
 ## Índice
 
+- [O que é o RewardFlow?](#o-que-é-o-rewardflow)
 - [Avaliação de Supple Design](#avaliação-de-supple-design)
 - [Executar e verificar](#executar-e-verificar)
 - [Como realizar ações na carteira](#como-realizar-ações-na-carteira)
@@ -57,6 +58,12 @@ O objetivo é tornar o código de negócio fácil de ler, compreender e modifica
 - [Fontes e leituras complementares](#fontes-e-leituras-complementares)
 - [Aviso sobre os comentários educacionais](#aviso-sobre-os-comentários-educacionais)
 - [Como contribuir](#como-contribuir)
+
+## O que é o RewardFlow?
+
+O **RewardFlow** é um pequeno sistema de gestão de fidelidade e pontos de recompensa. Cada membro é representado por uma carteira de recompensas, que pode ser aberta, receber créditos quando pontos são ganhos, receber débitos quando pontos são resgatados, informar o saldo atual e verificar se possui pontos suficientes para um resgate.
+
+O projeto se concentra nesse fluxo de negócio compacto para manter visíveis a linguagem do domínio e as decisões de design. Ele é um modelo educacional, não uma plataforma completa de fidelidade: cadastro de membros, campanhas, expiração de pontos, autenticação e livro-razão de transações estão fora do escopo atual.
 
 ## Avaliação de Supple Design
 

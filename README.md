@@ -39,6 +39,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 
 ## Table of contents
 
+- [What is RewardFlow?](#what-is-rewardflow)
 - [Supple Design assessment](#supple-design-assessment)
 - [Run and verify](#run-and-verify)
 - [How to perform wallet actions](#how-to-perform-wallet-actions)
@@ -57,6 +58,12 @@ The goal is to make business code easy to read, reason about and change. Small, 
 - [Source and further reading](#source-and-further-reading)
 - [Educational commentary disclaimer](#educational-commentary-disclaimer)
 - [Contributing](#contributing)
+
+## What is RewardFlow?
+
+**RewardFlow** is a small loyalty and reward-points management system. Each member is represented by a rewards wallet that can be opened, credited when points are earned, debited when points are redeemed, queried for its current balance, and checked to determine whether it can afford a redemption.
+
+The project focuses on this compact business flow so the domain language and design decisions remain easy to see. It is an educational model rather than a complete loyalty platform: member enrollment, campaigns, points expiration, authentication and a transaction ledger are outside its current scope.
 
 ## Supple Design assessment
 
