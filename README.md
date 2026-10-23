@@ -2,6 +2,8 @@
 
 <div align="center">
 
+**English** · [Português (Brasil)](README.pt-BR.md)
+
 # 🏆 RewardFlow.SuppleDesign
 
 ### Supple Design, Clean Architecture and Hexagonal Architecture in a practical .NET 8 API
