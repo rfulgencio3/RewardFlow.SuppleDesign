@@ -55,6 +55,7 @@ O objetivo é tornar o código de negócio fácil de ler, compreender e modifica
 - [Modelo de dados (DER)](#modelo-de-dados-der)
 - [Migrations](#migrations)
 - [Testes](#testes)
+- [Melhorias educacionais futuras](#melhorias-educacionais-futuras)
 - [Fontes e leituras complementares](#fontes-e-leituras-complementares)
 - [Aviso sobre os comentários educacionais](#aviso-sobre-os-comentários-educacionais)
 - [Como contribuir](#como-contribuir)
@@ -476,6 +477,21 @@ A suíte xUnit cobre:
 - Rotas e DI reais pelo WebApplicationFactory, contratos, status HTTP e Problem Details.
 
 Inicie o banco com docker compose up -d --wait antes de executar dotnet test RewardFlow.SuppleDesign.slnx. Os testes da aplicação usam o repositório em memória somente como test double rápido do mesmo contrato.
+
+## Melhorias educacionais futuras
+
+Cada evolução futura deve introduzir uma pressão concreta de modelagem e tornar visível seu efeito sobre o design. O objetivo é aprofundar o exemplo de Supple Design sem transformar o repositório em um catálogo de padrões de infraestrutura.
+
+| Evolução para aprendizado | Pergunta de domínio a explorar | Foco em Supple Design |
+| --- | --- | --- |
+| Histórico de movimentações | Crédito e débito são apenas mudanças de saldo ou cada movimento possui identidade, motivo e valor para auditoria? | Descobrir novos Conceptual Contours e decidir se uma movimentação é uma Entity dentro da carteira ou pertence a outro Aggregate. |
+| Expiração de pontos | Como pontos ganhos em momentos diferentes devem expirar sem quebrar as regras de resgate? | Criar conceitos temporais explícitos, Intention-Revealing Interfaces e Assertions, evitando comparações de datas espalhadas pelos casos de uso. |
+| Política configurável de acúmulo | Como valor da compra, campanha e categoria do membro são convertidos em pontos? | Modelar o cálculo como uma Standalone Class com uma Side-Effect-Free Function, entradas explícitas e resultado previsível. |
+| Transferência entre carteiras | Quais regras e qual fronteira de consistência governam uma movimentação entre duas carteiras? | Avaliar se o comportamento pertence a um Aggregate ou exige um Domain Service, a partir do modelo e não apenas do nome do padrão. |
+| Comandos idempotentes | Como impedir que uma nova tentativa de crédito aplique duas vezes o mesmo evento de negócio? | Dar nomes claros à identidade do comando e ao tratamento de duplicidade, mantendo detalhes de transporte e persistência fora do modelo de recompensas. |
+| Exemplos algébricos e testes baseados em propriedades | Quais propriedades sempre devem valer nas operações com pontos? | Demonstrar Closure of Operations, imutabilidade e invariantes como identidade aditiva e rejeição de resultados negativos. |
+
+Cada incremento deve começar com exemplos, vocabulário e testes que expressem a nova necessidade. Somente depois disso o modelo deve mudar. O README e o orçamento de abstrações também devem registrar a decisão, as alternativas consideradas e a condição que justifica cada novo tipo ou fronteira.
 
 ## Fontes e leituras complementares
 

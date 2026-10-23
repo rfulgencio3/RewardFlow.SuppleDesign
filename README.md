@@ -55,6 +55,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 - [Database schema (ERD)](#database-schema-erd)
 - [Migrations](#migrations)
 - [Tests](#tests)
+- [Future educational improvements](#future-educational-improvements)
 - [Source and further reading](#source-and-further-reading)
 - [Educational commentary disclaimer](#educational-commentary-disclaimer)
 - [Contributing](#contributing)
@@ -550,6 +551,21 @@ The xUnit suite covers:
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 
 Every database test uses fresh wallet identities. Start PostgreSQL with `docker compose up -d --wait`; `dotnet test RewardFlow.SuppleDesign.slnx` then builds the solution, applies pending migrations and executes the suite without starting an external HTTP server. Application tests use the in-memory repository only as a fast test double for the same port semantics.
+
+## Future educational improvements
+
+Future additions should introduce a concrete modeling pressure and make its effect on the design visible. The purpose is to deepen the Supple Design example without turning the repository into a catalog of infrastructure patterns.
+
+| Learning increment | Domain question to explore | Supple Design focus |
+| --- | --- | --- |
+| Reward transaction history | Is a credit or debit merely a balance change, or does each movement have identity, reason and audit meaning? | Discover new Conceptual Contours and decide whether a transaction is an Entity inside the wallet boundary or belongs to another Aggregate. |
+| Points expiration | How should points earned at different times expire while preserving valid redemption rules? | Introduce explicit temporal concepts, Intention-Revealing Interfaces and Assertions instead of spreading date comparisons across use cases. |
+| Configurable earning policy | How are purchase amount, campaign and membership tier converted into points? | Model the calculation as a Standalone Class with a Side-Effect-Free Function whose inputs and result are explicit. |
+| Transfer between wallets | Which rules and consistency boundary govern movement involving two wallets? | Evaluate whether the behavior belongs to an Aggregate or requires a Domain Service, based on the model rather than the pattern name. |
+| Idempotent commands | How can a retried credit avoid applying the same business event twice? | Give command identity and duplicate handling clear names while keeping transport and persistence details outside the reward model. |
+| Algebraic and property-based examples | Which properties always hold for reward-point operations? | Demonstrate Closure of Operations, immutability and invariants with properties such as additive identity and rejected underflow. |
+
+Each increment should begin with examples, vocabulary and failing tests. Only then should the model change. The README and abstraction budget should be updated with the new decision, alternatives considered and the condition that justifies every new type or boundary.
 
 ## Source and further reading
 
