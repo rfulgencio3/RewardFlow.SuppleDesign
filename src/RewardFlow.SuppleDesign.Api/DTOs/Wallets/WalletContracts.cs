@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using RewardFlow.SuppleDesign.Domain.Entities;
 
 namespace RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 
@@ -40,7 +41,7 @@ public sealed record WalletBalanceResponse(long Points);
 public sealed record WalletDetailsResponse(
     Guid WalletId,
     string Name,
-    string Status,
+    RewardsWalletStatus Status,
     DateTimeOffset CreatedAtUtc,
     long Points);
 

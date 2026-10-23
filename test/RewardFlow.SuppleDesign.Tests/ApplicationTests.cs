@@ -1,4 +1,5 @@
 using RewardFlow.SuppleDesign.Application.Wallets;
+using RewardFlow.SuppleDesign.Domain.Entities;
 using RewardFlow.SuppleDesign.Domain.Exceptions;
 using RewardFlow.SuppleDesign.Domain.ValueObjects;
 using RewardFlow.SuppleDesign.Tests.TestDoubles;
@@ -20,7 +21,7 @@ public sealed class ApplicationTests
         var id = opened.WalletId;
         var details = await new GetRewardsWallet(repository).ExecuteAsync(id);
         Assert.Equal("Primary rewards", details.Name);
-        Assert.Equal("active", details.Status);
+        Assert.Equal(RewardsWalletStatus.Active, details.Status);
         Assert.Equal(OpenedAt, details.CreatedAtUtc);
         Assert.Equal(0, details.Points);
         Assert.Equal(120, (await new CreditRewardPoints(repository).ExecuteAsync(id, 120)).Points);
@@ -75,14 +76,14 @@ public sealed class ApplicationTests
         await new CreditRewardPoints(repository).ExecuteAsync(id, 100);
 
         await new SuspendRewardsWallet(repository).ExecuteAsync(id);
-        Assert.Equal("suspended", (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
+        Assert.Equal(RewardsWalletStatus.Suspended, (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
         Assert.Equal(110, (await new CreditRewardPoints(repository).ExecuteAsync(id, 10)).Points);
         await Assert.ThrowsAsync<DomainException>(() => new DebitRewardPoints(repository).ExecuteAsync(id, 10));
 
         await new ReactivateRewardsWallet(repository).ExecuteAsync(id);
         Assert.Equal(100, (await new DebitRewardPoints(repository).ExecuteAsync(id, 10)).Points);
         await new CloseRewardsWallet(repository).ExecuteAsync(id);
-        Assert.Equal("closed", (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
+        Assert.Equal(RewardsWalletStatus.Closed, (await new GetRewardsWallet(repository).ExecuteAsync(id)).Status);
         await Assert.ThrowsAsync<DomainException>(() => new CreditRewardPoints(repository).ExecuteAsync(id, 1));
     }
 
