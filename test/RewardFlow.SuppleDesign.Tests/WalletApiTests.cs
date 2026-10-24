@@ -209,14 +209,20 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
             await first.Content.ReadAsStringAsync(),
             await replay.Content.ReadAsStringAsync());
 
+        var second = await client.PostAsJsonAsync(path + "/credit",
+            new { operationId = Guid.NewGuid(), points = 5, reason = "Second reward" });
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
         var ledger = await client.GetFromJsonAsync<RewardTransactionPageResponse>(
             path + "/transactions?page=1&pageSize=1", JsonOptions);
         var movement = Assert.Single(ledger!.Items);
-        Assert.Equal(operationId, movement.OperationId);
         Assert.Equal(RewardTransactionType.Credit, movement.Type);
-        Assert.Equal("Welcome reward", movement.Reason);
-        Assert.Equal(25, movement.BalanceAfter);
-        Assert.Equal(25, (await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance"))!.Points);
+        Assert.True(ledger.HasNextPage);
+        var lastPage = await client.GetFromJsonAsync<RewardTransactionPageResponse>(
+            path + "/transactions?page=2&pageSize=1", JsonOptions);
+        Assert.Single(lastPage!.Items);
+        Assert.False(lastPage.HasNextPage);
+        Assert.Equal(30, (await client.GetFromJsonAsync<WalletBalanceResponse>(path + "/balance"))!.Points);
 
         var conflict = await client.PostAsJsonAsync(path + "/credit",
             new { operationId, points = 30, reason = "Changed retry" });

@@ -138,7 +138,7 @@ public sealed class WalletsController(
     {
         var result = await listTransactions.ExecuteAsync(id, page, pageSize, cancellationToken);
         return Ok(new RewardTransactionPageResponse(result.Items.Select(ToResponse).ToArray(), result.Page,
-            result.PageSize));
+            result.PageSize, result.HasNextPage));
     }
 
     private static RewardMovementResponse ToResponse(RewardMovement movement) => new(movement.OperationId,

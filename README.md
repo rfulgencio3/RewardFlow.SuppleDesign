@@ -47,6 +47,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 - [Evans' model building blocks and RewardFlow](#evans-model-building-blocks-and-rewardflow)
 - [How the code applies Evans' Supple Design patterns](#how-the-code-applies-evans-supple-design-patterns)
 - [Abstraction budget](#abstraction-budget)
+- [Architecture decisions](#architecture-decisions)
 - [HTTP contract and errors](#http-contract-and-errors)
 - [Persistence and concurrency](#persistence-and-concurrency)
 - [Database schema (ERD)](#database-schema-erd)
@@ -76,7 +77,7 @@ The flexibility comes from explicit concepts and replaceable boundaries, not fro
 
 ### Prerequisites
 
-Install Docker Desktop, a .NET SDK with `.slnx` support (9.0.200 or later), and the ASP.NET Core 8 runtime. The first restore needs access to NuGet for EF Core, Npgsql, test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects remain free of third-party package dependencies.
+Install Docker Desktop and the ASP.NET Core 8 runtime. The repository's `global.json` selects the .NET 9 SDK feature band required for `.slnx`; install a compatible .NET 9 SDK if it is not already available. The first restore needs access to NuGet for EF Core, Npgsql, test packages, Swagger tooling and, when necessary, .NET 8 targeting packs. The Domain and Application projects remain free of third-party package dependencies.
 
 ### Start the API
 
@@ -92,6 +93,19 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 
 > [!TIP]
 > Open [http://localhost:5180/](http://localhost:5180/) after the API starts. The root redirects to Swagger UI, where every endpoint can be explored and executed. The raw OpenAPI document is available at `/swagger/v1/swagger.json`.
+
+Normal startup suppresses EF Core command noise and reports only the useful stages:
+
+```text
+RewardFlow API
+[1/3] Preparing application services...
+[2/3] Connecting to PostgreSQL and applying migrations...
+[OK]  Database is ready.
+[3/3] Starting the HTTP server...
+[OK]  RewardFlow API is ready.
+      Swagger: http://localhost:5180/swagger
+      Press Ctrl+C to stop.
+```
 
 Compose starts the pinned PostgreSQL image with the local development credentials from `compose.yaml`. The API applies pending EF Core migrations before accepting requests, so the first start creates the schema automatically. Wallets remain available across API restarts because PostgreSQL stores them in the named Docker volume.
 
@@ -109,7 +123,7 @@ Use one wallet ID throughout a flow. A wallet must be opened before any command 
 | Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "operationId": "uuid", "points": 40, "reason": "Redemption" }` | `200 OK`, provided the wallet can afford the amount |
 | Read the balance | `GET /api/wallets/{id}/balance` | No body | `200 OK` with the current points |
 | Check affordability | `GET /api/wallets/{id}/can-afford?requiredPoints=60` | Non-negative whole points in the query string | `200 OK` with `canAfford`; the balance is unchanged |
-| Read transaction history | `GET /api/wallets/{id}/transactions?page=1&pageSize=20` | A page of 1 to 100 items | `200 OK` in reverse chronological order |
+| Read transaction history | `GET /api/wallets/{id}/transactions?page=1&pageSize=20` | A page of 1 to 100 items | `200 OK` in reverse chronological order with `hasNextPage` |
 | Suspend / reactivate / close | `POST /api/wallets/{id}/{action}` | No body | `204 No Content` after a valid lifecycle transition |
 
 The commands below create a wallet, credit 100 points, debit 40, confirm that 60 points are affordable and then demonstrate an overdraft rejection:
@@ -285,8 +299,10 @@ RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
 ├── RewardFlow.SuppleDesign.slnLaunch              # Optional shared startup profile
 ├── Directory.Build.props                         # Shared .NET 8 build settings
+├── global.json                                   # Reproducible SDK feature band
 ├── compose.yaml                                  # Local PostgreSQL 17 container and volume
 ├── dotnet-tools.json                             # Reproducible EF Core CLI version
+├── docs/decisions/                               # Architectural decision records
 ├── README.md
 │
 ├── src/                                           # Production code
@@ -468,6 +484,12 @@ Supple Design favors code that exposes the model with the least machinery needed
 
 The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
 
+## Architecture decisions
+
+Decisions whose trade-offs span several classes are recorded in [`docs/decisions`](docs/decisions/README.md). The current records explain why transaction history stays outside wallet reconstitution, how `operationId` provides idempotency, why balance and ledger records commit atomically, and why this educational API applies migrations during startup.
+
+The records preserve the reasoning so readers can distinguish a deliberate conceptual boundary from incidental implementation structure.
+
 ## HTTP contract and errors
 
 | Method | Route | Request body | Success |
@@ -577,6 +599,8 @@ The xUnit suite covers:
 - Exact-balance redemption, zero-balance protection, empty identity, and rejected mutations preserving state.
 - Repeated affordability queries preserving the same balance reference.
 - Open/credit/debit/read orchestration, missing-wallet reads, duplicate IDs, cancellation, detached snapshots, and stale-write rejection.
+- Concurrent identical retries converging on one movement, plus rollback when a ledger insert conflicts after a balance update.
+- Ledger pagination and `hasNextPage` without an additional count query.
 - PostgreSQL mapping, startup migration, durable API persistence and conditional revision updates through the real adapter.
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 - Meaningful Swagger examples that remain independent from HTTP validation implementation.

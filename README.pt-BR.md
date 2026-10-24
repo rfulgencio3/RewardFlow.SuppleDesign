@@ -47,6 +47,7 @@ O objetivo é tornar o código de negócio fácil de ler, compreender e modifica
 - [Blocos de construção de Evans e o RewardFlow](#blocos-de-construção-de-evans-e-o-rewardflow)
 - [Como o código aplica os padrões de Supple Design de Evans](#como-o-código-aplica-os-padrões-de-supple-design-de-evans)
 - [Orçamento de abstrações](#orçamento-de-abstrações)
+- [Decisões arquiteturais](#decisões-arquiteturais)
 - [Contrato HTTP e erros](#contrato-http-e-erros)
 - [Persistência e concorrência](#persistência-e-concorrência)
 - [Modelo de dados (DER)](#modelo-de-dados-der)
@@ -76,7 +77,7 @@ A flexibilidade vem de conceitos explícitos e fronteiras substituíveis. O Post
 
 ### Pré-requisitos
 
-Instale o Docker Desktop, um SDK do .NET com suporte a arquivos .slnx — versão 9.0.200 ou superior — e o runtime do ASP.NET Core 8. O primeiro restore precisa de acesso ao NuGet para obter EF Core, Npgsql, pacotes de teste, Swagger e, quando necessário, os targeting packs do .NET 8. Domain e Application continuam sem dependências de pacotes de terceiros.
+Instale o Docker Desktop e o runtime do ASP.NET Core 8. O `global.json` do repositório seleciona a faixa do SDK .NET 9 necessária para arquivos `.slnx`; instale um SDK .NET 9 compatível caso ainda não esteja disponível. O primeiro restore precisa de acesso ao NuGet para obter EF Core, Npgsql, pacotes de teste, Swagger e, quando necessário, os targeting packs do .NET 8. Domain e Application continuam sem dependências de pacotes de terceiros.
 
 ### Iniciar a API
 
@@ -92,6 +93,19 @@ dotnet run --project src/RewardFlow.SuppleDesign.Api
 
 > [!TIP]
 > Abra [http://localhost:5180/](http://localhost:5180/) após iniciar a API. A raiz redireciona para o Swagger UI, onde todos os endpoints podem ser consultados e executados. O documento OpenAPI está disponível em /swagger/v1/swagger.json.
+
+A inicialização normal suprime os comandos do EF Core e mostra somente etapas úteis, em inglês:
+
+~~~text
+RewardFlow API
+[1/3] Preparing application services...
+[2/3] Connecting to PostgreSQL and applying migrations...
+[OK]  Database is ready.
+[3/3] Starting the HTTP server...
+[OK]  RewardFlow API is ready.
+      Swagger: http://localhost:5180/swagger
+      Press Ctrl+C to stop.
+~~~
 
 O Compose inicia uma imagem fixada do PostgreSQL com as credenciais locais de desenvolvimento definidas em compose.yaml. Antes de aceitar requisições, a API aplica as migrations pendentes do EF Core. Na primeira execução, o banco e a tabela são criados automaticamente. As carteiras permanecem disponíveis depois que a API é reiniciada porque o PostgreSQL usa um volume Docker nomeado.
 
@@ -109,7 +123,7 @@ Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta 
 | Debitar pontos resgatados | POST /api/wallets/{id}/debit | `{ "operationId": "uuid", "points": 40, "reason": "Resgate" }` | 200 OK, se houver saldo suficiente |
 | Consultar o saldo | GET /api/wallets/{id}/balance | Sem body | 200 OK com os pontos atuais |
 | Verificar capacidade de pagamento | GET /api/wallets/{id}/can-afford?requiredPoints=60 | Pontos inteiros não negativos | 200 OK com canAfford; o saldo não muda |
-| Consultar o extrato | GET /api/wallets/{id}/transactions?page=1&pageSize=20 | Paginação entre 1 e 100 itens | 200 OK com movimentações em ordem cronológica inversa |
+| Consultar o extrato | GET /api/wallets/{id}/transactions?page=1&pageSize=20 | Paginação entre 1 e 100 itens | 200 OK em ordem cronológica inversa com `hasNextPage` |
 | Suspender / reativar / encerrar | POST /api/wallets/{id}/{ação} | Sem body | 204 No Content após uma transição válida |
 
 <details>
@@ -269,8 +283,10 @@ RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
 ├── RewardFlow.SuppleDesign.slnLaunch              # Perfil de inicialização compartilhado opcional
 ├── Directory.Build.props                         # Configurações compartilhadas do .NET 8
+├── global.json                                   # Faixa reproduzível do SDK
 ├── compose.yaml                                  # PostgreSQL 17 e volume local
 ├── dotnet-tools.json                             # Versão reproduzível do dotnet-ef
+├── docs/decisions/                               # Registros de decisões arquiteturais
 ├── README.md
 ├── README.pt-BR.md
 │
@@ -416,6 +432,12 @@ Por exemplo, new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new Reward
 
 O projeto não contém generic repository, wrapper de Unit of Work, mediator, framework de mapeamento, factory, domain service ou event bus. Nenhum deles protege atualmente uma invariante adicional ou atende a um segundo adaptador.
 
+## Decisões arquiteturais
+
+Decisões cujos trade-offs atravessam várias classes estão registradas em [`docs/decisions`](docs/decisions/README.md). Os registros atuais explicam por que o extrato permanece fora da reconstituição da carteira, como `operationId` fornece idempotência, por que saldo e movimentação são confirmados atomicamente e por que esta API educacional aplica migrations no startup.
+
+Os registros preservam o raciocínio para que o leitor diferencie uma fronteira conceitual deliberada de uma estrutura incidental da implementação.
+
 ## Contrato HTTP e erros
 
 | Método | Rota | Body | Sucesso |
@@ -520,6 +542,8 @@ A suíte xUnit cobre:
 - Consultas de capacidade de pagamento sem mutação.
 - Orquestração, snapshots desacoplados e rejeição de escritas obsoletas.
 - Idempotência de movimentações, conflito por reutilização incorreta do identificador e extrato paginado.
+- Repetições idênticas concorrentes convergindo em uma movimentação e rollback quando o registro do extrato entra em conflito após a atualização do saldo.
+- Paginação do extrato e `hasNextPage` sem consulta adicional de contagem.
 - Mapeamento PostgreSQL, migration no startup, persistência após reinício e atualização condicional por revisão.
 - Rotas e DI reais pelo WebApplicationFactory, contratos, status HTTP e Problem Details.
 - Exemplos claros no Swagger, independentes da implementação da validação HTTP.
