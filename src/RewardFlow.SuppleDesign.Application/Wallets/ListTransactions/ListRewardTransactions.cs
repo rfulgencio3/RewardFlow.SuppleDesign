@@ -18,8 +18,10 @@ public sealed class ListRewardTransactions(IRewardsWalletRepository repository) 
         CancellationToken cancellationToken = default)
     {
         await WalletPersistence.LoadAsync(repository, walletId, cancellationToken);
-        var transactions = await repository.ListTransactionsAsync(walletId, checked((page - 1) * pageSize), pageSize,
+        var transactions = await repository.ListTransactionsAsync(walletId, checked((page - 1) * pageSize), pageSize + 1,
             cancellationToken);
-        return new(transactions.Select(WalletPersistence.ToResult).ToArray(), page, pageSize);
+        var hasNextPage = transactions.Count > pageSize;
+        return new(transactions.Take(pageSize).Select(WalletPersistence.ToResult).ToArray(), page, pageSize,
+            hasNextPage);
     }
 }

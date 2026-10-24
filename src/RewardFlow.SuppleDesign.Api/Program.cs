@@ -6,6 +6,10 @@ using RewardFlow.SuppleDesign.Api.Errors;
 using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 using RewardFlow.SuppleDesign.Infrastructure;
 
+Console.WriteLine();
+Console.WriteLine("RewardFlow API");
+Console.WriteLine("[1/3] Preparing application services...");
+
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("RewardFlow")
     ?? throw new InvalidOperationException("Connection string 'RewardFlow' is required.");
@@ -42,15 +46,19 @@ builder.Services.AddScoped<ICloseRewardsWallet, CloseRewardsWallet>();
 builder.Services.AddScoped<IListRewardTransactions, ListRewardTransactions>();
 
 var app = builder.Build();
+Console.WriteLine("[2/3] Connecting to PostgreSQL and applying migrations...");
 try
 {
     await app.Services.ApplyRewardFlowMigrationsAsync();
+    Console.WriteLine("[OK]  Database is ready.");
 }
 catch (RewardFlowDatabaseUnavailableException exception)
 {
-    app.Logger.LogCritical(exception,
-        "PostgreSQL is unavailable. Start the local database with: docker compose up -d --wait");
-    throw;
+    Console.Error.WriteLine("[ERROR] PostgreSQL is unavailable.");
+    Console.Error.WriteLine("        Start it with: docker compose up -d --wait");
+    Console.Error.WriteLine($"        Details: {exception.InnerException?.Message ?? exception.Message}");
+    Environment.ExitCode = 1;
+    return;
 }
 app.UseExceptionHandler();
 app.UseSwagger();
@@ -62,7 +70,15 @@ app.UseSwaggerUI(options =>
 app.MapGet("/", () => Results.Redirect("/swagger"))
     .ExcludeFromDescription();
 app.MapControllers();
-app.Run();
+
+Console.WriteLine("[3/3] Starting the HTTP server...");
+await app.StartAsync();
+var applicationUrl = app.Urls.FirstOrDefault() ?? "http://localhost:5180";
+Console.WriteLine("[OK]  RewardFlow API is ready.");
+Console.WriteLine($"      Swagger: {applicationUrl.TrimEnd('/')}/swagger");
+Console.WriteLine("      Press Ctrl+C to stop.");
+Console.WriteLine();
+await app.WaitForShutdownAsync();
 
 /// <summary>Conceptual Contours: composition root connects application ports to infrastructure and HTTP adapters.</summary>
 public partial class Program { }

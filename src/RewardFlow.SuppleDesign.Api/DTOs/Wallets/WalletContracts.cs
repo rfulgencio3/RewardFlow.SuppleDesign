@@ -52,7 +52,11 @@ public sealed record RewardMovementResponse(Guid OperationId, RewardTransactionT
     DateTimeOffset OccurredAtUtc, long BalanceAfter);
 
 /// <summary>Paged HTTP representation of the immutable wallet ledger.</summary>
-public sealed record RewardTransactionPageResponse(IReadOnlyList<RewardMovementResponse> Items, int Page, int PageSize);
+public sealed record RewardTransactionPageResponse(
+    IReadOnlyList<RewardMovementResponse> Items,
+    int Page,
+    int PageSize,
+    bool HasNextPage);
 
 /// <summary>HTTP representation of the wallet's descriptive state.</summary>
 public sealed record WalletDetailsResponse(

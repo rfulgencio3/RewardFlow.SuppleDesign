@@ -26,4 +26,8 @@ public sealed record RewardMovement(Guid OperationId, RewardTransactionType Type
     DateTimeOffset OccurredAtUtc, long BalanceAfter);
 
 /// <summary>Read model for one page of the wallet's immutable transaction ledger.</summary>
-public sealed record RewardTransactionPage(IReadOnlyList<RewardMovement> Items, int Page, int PageSize);
+public sealed record RewardTransactionPage(
+    IReadOnlyList<RewardMovement> Items,
+    int Page,
+    int PageSize,
+    bool HasNextPage);
