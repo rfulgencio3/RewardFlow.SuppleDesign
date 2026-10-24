@@ -57,6 +57,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 - [Source and further reading](#source-and-further-reading)
 - [Educational commentary disclaimer](#educational-commentary-disclaimer)
 - [Contributing](#contributing)
+- [Documentation, skills and guardrails](#documentation-skills-and-guardrails)
 
 ## What is RewardFlow?
 
@@ -181,7 +182,7 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 | Reactivate | Return a suspended wallet to active use. |
 | Close | Permanently prevent new credits and redemptions. |
 
-The application generates a non-empty wallet ID and records its UTC creation instant. A trimmed name from 1 to 120 characters is required. New wallets are active with zero points. Suspended wallets accept credits but reject debits and affordability checks; closed wallets reject every movement. A credit or debit must contain at least one point. Debiting exactly the balance is valid, and a zero debit is rejected because a command must move points.
+The application generates a non-empty wallet ID and records its UTC creation instant. A trimmed name from 1 to 120 characters is required. New wallets are active with zero points. Suspended wallets accept credits, reject debits and return false for affordability checks; closed wallets reject every new movement and also return false for affordability. A credit or debit must contain at least one point, a non-empty operation ID and a meaningful reason of up to 200 characters. Identical retries return the original movement; reusing an operation ID with different data returns a conflict. Debiting exactly the balance is valid, and a zero debit is rejected because a command must move points.
 
 `RewardPoints` uses `long` and accepts values from zero through `long.MaxValue`. Negative construction, subtraction below zero, and addition above the maximum are rejected with domain exceptions. Failed operations leave the original values and wallet balance intact. Record value equality lets two independently constructed equal point amounts compare equal.
 
@@ -505,7 +506,7 @@ The records preserve the reasoning so readers can distinguish a deliberate conce
 | POST | `/api/wallets/{id}/reactivate` | none | 204 after reactivation |
 | POST | `/api/wallets/{id}/close` | none | 204 after permanent closure |
 
-Creation returns only `{"walletId":"<guid>"}`; its `Location` header addresses the new wallet. Balance commands and queries return `{"points":60}` because the ID already appears in the route. IDs in routes must parse as GUIDs; malformed GUID routes do not match and return 404. An all-zero GUID parses but violates a domain invariant and returns 422.
+Creation returns only `{"walletId":"<guid>"}`; its `Location` header addresses the new wallet. The balance query returns `{"points":60}`. Credit and debit return the accepted movement, including `operationId`, `type`, `points`, `reason`, `occurredAtUtc` and `balanceAfter`. IDs in routes must parse as GUIDs; malformed GUID routes do not match and return 404. An all-zero GUID parses but violates a domain invariant and returns 422.
 
 | Status | Situation |
 | --- | --- |
@@ -600,8 +601,8 @@ The xUnit suite covers:
 - Repeated affordability queries preserving the same balance reference.
 - Open/credit/debit/read orchestration, missing-wallet reads, duplicate IDs, cancellation, detached snapshots, and stale-write rejection.
 - Concurrent identical retries converging on one movement, plus rollback when a ledger insert conflicts after a balance update.
-- Ledger pagination and `hasNextPage` without an additional count query.
-- PostgreSQL mapping, startup migration, durable API persistence and conditional revision updates through the real adapter.
+- Ledger pagination and `hasNextPage`. The implementation fetches one extra item instead of issuing a count query; the suite verifies pagination results rather than SQL query counts.
+- PostgreSQL mapping, startup migration and conditional revision updates through the real adapter. Persistence across API restarts follows from PostgreSQL storage; the suite does not include a dedicated restart test.
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 - Meaningful Swagger examples that remain independent from HTTP validation implementation.
 
@@ -657,6 +658,8 @@ These links are study aids, not claims that this sample is the only valid implem
 
 ## Contributing
 
+Read the [guardrails](docs/guardrails.md) before changing behavior. Keep source code, identifiers and code comments in English. Keep shared claims in both README translations aligned. Use a new globally unique `operationId` for each new movement, including when repeating the `.http` walkthrough with another wallet; retain that ID only when retrying the same operation.
+
 RewardFlow.SuppleDesign is a collaborative project. Improvements, constructive criticism and suggestions are always welcome.
 
 To contribute code or documentation:
@@ -668,6 +671,22 @@ To contribute code or documentation:
 5. Open a pull request explaining the motivation, the resulting behavior and how the change was validated.
 
 Contributions can range from typo fixes and clearer examples to new adapters, stronger tests and alternative demonstrations of Supple Design. If you find something confusing or disagree with a design decision, feel free to open a discussion or pull request—the feedback is part of improving the project.
+
+## Documentation, skills and guardrails
+
+The primary goal is an objective, educational implementation of Eric Evans' Supple Design patterns. Start with the [documentation index](docs/README.md), [pattern guide](docs/supple-design.md), [project analysis](docs/project-analysis.md) and [guardrails](docs/guardrails.md). These supporting documents are in Portuguese. The sample demonstrates six patterns; it does not claim complete coverage of Chapter 10, including declarative design. Intention-Revealing Interfaces concerns meaningful public contracts and does not require a C# interface for every type.
+
+| Resource | Role |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | Repository instructions and essential guardrails for compatible coding agents |
+| [rewardflow-evolve](.agents/skills/rewardflow-evolve/SKILL.md) | Workflow for evolving domain rules, value objects and use cases |
+| [rewardflow-review](.agents/skills/rewardflow-review/SKILL.md) | Workflow for reviewing correctness and educational explanations |
+| [Guardrails](docs/guardrails.md) | Shared review criteria for contributors and agents |
+| [CI](.github/workflows/ci.yml) | Automated restore, Release build and tests with PostgreSQL |
+
+In Codex, repository instructions are discovered through `AGENTS.md`; skills under `.agents/skills/` can be selected automatically by their descriptions or invoked explicitly with `$rewardflow-evolve` and `$rewardflow-review`. You do not normally need to announce their existence in every prompt. Discovery depends on the tool and its configuration; when a skill is unavailable, ask the agent to read its linked `SKILL.md` directly. See the official OpenAI documentation for [AGENTS.md](https://developers.openai.com/codex/guides/agents-md) and [skills](https://developers.openai.com/codex/skills).
+
+People should read these instructions when contributing; other tools may require configuration or explicit context. Instructions guide changes, while tests and CI verify only the checks they implement. Educational clarity and conceptual accuracy still require review. Skills do not grant permission to publish or perform unrelated external actions.
 
 ---
 

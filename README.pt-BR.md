@@ -57,6 +57,7 @@ O objetivo é tornar o código de negócio fácil de ler, compreender e modifica
 - [Fontes e leituras complementares](#fontes-e-leituras-complementares)
 - [Aviso sobre os comentários educacionais](#aviso-sobre-os-comentários-educacionais)
 - [Como contribuir](#como-contribuir)
+- [Documentação, skills e guardrails](#documentação-skills-e-guardrails)
 
 ## O que é o RewardFlow?
 
@@ -543,8 +544,8 @@ A suíte xUnit cobre:
 - Orquestração, snapshots desacoplados e rejeição de escritas obsoletas.
 - Idempotência de movimentações, conflito por reutilização incorreta do identificador e extrato paginado.
 - Repetições idênticas concorrentes convergindo em uma movimentação e rollback quando o registro do extrato entra em conflito após a atualização do saldo.
-- Paginação do extrato e `hasNextPage` sem consulta adicional de contagem.
-- Mapeamento PostgreSQL, migration no startup, persistência após reinício e atualização condicional por revisão.
+- Paginação do extrato e `hasNextPage`. A implementação busca um item adicional em vez de consultar a contagem; a suíte verifica resultados da paginação, sem instrumentar a quantidade de consultas SQL.
+- Mapeamento PostgreSQL, migration no startup e atualização condicional por revisão. A persistência entre reinícios decorre do armazenamento PostgreSQL; não há teste dedicado de reinício da API.
 - Rotas e DI reais pelo WebApplicationFactory, contratos, status HTTP e Problem Details.
 - Exemplos claros no Swagger, independentes da implementação da validação HTTP.
 
@@ -594,7 +595,27 @@ Este projeto foi inspirado por *Domain-Driven Design: Tackling Complexity in the
 | [RewardsWallet](src/RewardFlow.SuppleDesign.Domain/Entities/RewardsWallet.cs) | Conceptual Contours, Entity e Aggregate Root | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
 | [IRewardsWalletRepository](src/RewardFlow.SuppleDesign.Domain/Ports/IRewardsWalletRepository.cs) | Repository como porta de saída do domínio | [DDD Reference](https://www.domainlanguage.com/ddd/reference/) |
 
+## Documentação, skills e guardrails
+
+O propósito principal é implementar os padrões de Supple Design de Eric Evans de forma objetiva e educacional. Consulte o [índice da documentação](docs/README.md), o [guia dos padrões](docs/supple-design.md), a [análise do projeto](docs/project-analysis.md) e os [guardrails](docs/guardrails.md). O exemplo demonstra seis padrões; não reivindica cobertura integral do capítulo 10, incluindo design declarativo. Intention-Revealing Interfaces trata de contratos públicos que comunicam intenção e não exige uma interface C# para cada tipo.
+
+| Recurso | Papel |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | Instruções do repositório e guardrails essenciais para agentes compatíveis |
+| [rewardflow-evolve](.agents/skills/rewardflow-evolve/SKILL.md) | Procedimento para evoluir regras, value objects e casos de uso |
+| [rewardflow-review](.agents/skills/rewardflow-review/SKILL.md) | Procedimento de revisão de correção e explicações educacionais |
+| [Guardrails](docs/guardrails.md) | Critérios de revisão para pessoas e agentes |
+| [CI](.github/workflows/ci.yml) | Restore, build Release e testes com PostgreSQL automatizados |
+
+No Codex, as instruções são descobertas pelo `AGENTS.md`; as skills em `.agents/skills/` podem ser selecionadas automaticamente pela descrição ou invocadas com `$rewardflow-evolve` e `$rewardflow-review`. Normalmente não é necessário anunciar sua existência em cada prompt. A descoberta depende da ferramenta e da configuração; se uma skill não estiver disponível, indique ao agente o `SKILL.md` correspondente para leitura direta. Consulte a documentação oficial da OpenAI sobre [AGENTS.md](https://developers.openai.com/codex/guides/agents-md) e [skills](https://developers.openai.com/codex/skills).
+
+Pessoas devem consultar essas instruções ao contribuir; outras ferramentas podem exigir configuração ou contexto explícito. As instruções orientam mudanças; testes e CI verificam apenas os critérios implementados. Clareza educacional e precisão conceitual continuam dependendo de revisão. Skills não concedem autorização para publicar ou executar ações externas sem relação com a tarefa.
+
+Consultas de capacidade de resgate em carteiras suspensas ou encerradas retornam `false`. Créditos e débitos retornam a movimentação aceita com `balanceAfter`; a consulta de saldo retorna `points`. Uma repetição idêntica de operação aceita devolve seu resultado original, inclusive após mudança do estado da carteira, sem realizar nova movimentação.
+
 ## Como contribuir
+
+Leia os [guardrails](docs/guardrails.md) antes de alterar comportamentos. Mantenha código-fonte, identificadores e comentários de código em inglês. Alinhe afirmações compartilhadas nas duas versões do README. Gere um `operationId` globalmente único para cada nova movimentação, inclusive ao repetir o exemplo `.http` com outra carteira; preserve esse ID somente ao repetir a mesma operação.
 
 RewardFlow.SuppleDesign é um projeto colaborativo. Melhorias, críticas construtivas e sugestões são sempre bem-vindas.
 
