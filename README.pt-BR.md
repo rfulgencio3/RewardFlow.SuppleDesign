@@ -112,6 +112,8 @@ O Compose inicia uma imagem fixada do PostgreSQL com as credenciais locais de de
 
 ## Como realizar ações na carteira
 
+As rotas estão implementadas, salvo os itens marcados como planejados. A transferência é uma proposta e ainda não pode ser executada; consulte o [plano de implementação](docs/transfer-plan.md).
+
 Inicie a API e escolha uma destas opções: execute as requisições pelo Swagger em [http://localhost:5180/](http://localhost:5180/), abra [RewardFlow.http](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) em um cliente HTTP compatível ou siga o exemplo em PowerShell.
 
 Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta antes de receber qualquer comando ou consulta.
@@ -122,6 +124,7 @@ Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta 
 | Consultar a carteira | GET /api/wallets/{id} | Sem body | 200 OK com nome, status, criação e saldo |
 | Creditar pontos ganhos | POST /api/wallets/{id}/credit | `{ "operationId": "uuid", "points": 100, "reason": "Compra" }` | 200 OK com a movimentação e o saldo resultante |
 | Debitar pontos resgatados | POST /api/wallets/{id}/debit | `{ "operationId": "uuid", "points": 40, "reason": "Resgate" }` | 200 OK, se houver saldo suficiente |
+| Transferir pontos — planejado | POST /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, 1..100 pontos e reason | Proposta de 200 com ambos os saldos; origem com saldo suficiente; gravação atômica |
 | Consultar o saldo | GET /api/wallets/{id}/balance | Sem body | 200 OK com os pontos atuais |
 | Verificar capacidade de pagamento | GET /api/wallets/{id}/can-afford?requiredPoints=60 | Pontos inteiros não negativos | 200 OK com canAfford; o saldo não muda |
 | Consultar o extrato | GET /api/wallets/{id}/transactions?page=1&pageSize=20 | Paginação entre 1 e 100 itens | 200 OK em ordem cronológica inversa com `hasNextPage` |
@@ -191,6 +194,8 @@ RewardPoints usa long e aceita valores de zero a long.MaxValue. Construção neg
 
 ## Como uma requisição percorre o projeto
 
+O diagrama abaixo representa o crédito atual. A sequência da futura transferência entre duas carteiras, incluindo rollback, está no [plano](docs/transfer-plan.md#sequence-and-atomicity).
+
 A operação de crédito mostra como os adaptadores e o núcleo colaboram sem transferir regras de negócio para o controller ou para o repositório:
 
 ~~~mermaid
@@ -226,6 +231,8 @@ sequenceDiagram
 Débito segue o mesmo fluxo de comando. Saldo, capacidade de pagamento e extrato são consultas sem mutação. Falhas conhecidas chegam a ApiExceptionHandler, que as converte em HTTP Problem Details na fronteira externa.
 
 ## Arquitetura: Clean Architecture e Portas Hexagonais
+
+O diagrama abaixo mostra o sistema implementado. A [arquitetura proposta para transferência](docs/transfer-plan.md#proposed-architecture) acrescenta cálculo de domínio e uma capacidade específica de persistência atômica, sem novas camadas arquiteturais.
 
 ~~~mermaid
 flowchart LR
@@ -278,6 +285,8 @@ As setas contínuas mostram o fluxo das requisições e a colaboração no domí
 Domain não possui referências a outros projetos ou pacotes. Application e Infrastructure referenciam Domain de forma independente. Infrastructure não conhece HTTP, Application não referencia Infrastructure e os objetos do domínio nunca são serializados diretamente como contratos HTTP.
 
 ## Estrutura do projeto
+
+Os futuros arquivos de domínio, caso de uso, contratos, mapeamentos e testes estão listados por fase no [plano](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). Ainda não integram a árvore atual abaixo.
 
 ~~~text
 RewardFlow.SuppleDesign/
@@ -343,6 +352,8 @@ RewardFlow.SuppleDesign/
 ~~~
 
 ## Blocos de construção de Evans e o RewardFlow
+
+O diagrama atual permanece válido. A proposta de transferência acrescenta um serviço de domínio justificado pelo cálculo entre duas carteiras, separado da coordenação da aplicação. Consulte o [ADR-003 proposto](docs/decisions/003-atomic-wallet-transfers.md).
 
 A figura do livro apresenta os blocos mais amplos de **Model-Driven Design** de Evans. Ela complementa o Capítulo 10, mas não é um diagrama dos padrões de Supple Design: Entities, Value Objects, Aggregates, Repositories, Services e Factories são blocos táticos; Intention-Revealing Interfaces, Side-Effect-Free Functions, Assertions, Conceptual Contours, Standalone Classes e Closure of Operations tornam esse modelo flexível.
 
@@ -418,6 +429,8 @@ Por exemplo, new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new Reward
 
 ## Orçamento de abstrações
 
+As adições propostas têm responsabilidades concretas: `TransferAmount` protege 1..100; `RewardTransferCalculator` calcula os dois resultados sem mutação; a evidência de transferência registra a operação pareada. O registro global de operações separa idempotência da identidade dos lançamentos. A justificativa e as alternativas estão no [plano](docs/transfer-plan.md); ainda não foram implementadas.
+
 | Abstração | Por que existe | Quando reconsiderar |
 | --- | --- | --- |
 | RewardPoints | Centraliza aritmética, limites e igualdade de valor. | Se pontos deixarem de ter regras além do tipo primitivo. |
@@ -441,12 +454,15 @@ Os registros preservam o raciocínio para que o leitor diferencie uma fronteira 
 
 ## Contrato HTTP e erros
 
+A tabela descreve rotas atuais e propostas explicitamente identificadas. O contrato proposto de `POST /api/wallets/{sourceWalletId}/transfers`, seus exemplos e erros estão no [plano](docs/transfer-plan.md#proposed-http-contract). O endpoint ainda não está disponível.
+
 | Método | Rota | Body | Sucesso |
 | --- | --- | --- | --- |
 | POST | /api/wallets | {"name":"Recompensas principais"} | 201, ID gerado e localização da carteira |
 | GET | /api/wallets/{id} | nenhum | 200 e dados da carteira |
 | POST | /api/wallets/{id}/credit | operationId, pontos e motivo | 200 e movimentação aceita |
 | POST | /api/wallets/{id}/debit | operationId, pontos e motivo | 200 e movimentação aceita |
+| POST — planejado | /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, points (1..100), reason | Proposta de 200 com resultado original; ainda indisponível |
 | GET | /api/wallets/{id}/transactions?page=1&pageSize=20 | Sem body | 200 e página do extrato |
 | GET | /api/wallets/{id}/balance | nenhum | 200 e saldo atual |
 | GET | /api/wallets/{id}/can-afford?requiredPoints=60 | nenhum | 200 e resultado da consulta |
@@ -485,6 +501,8 @@ A connection string é lida de ConnectionStrings:RewardFlow. Em outros ambientes
 
 ### Modelo de dados (DER)
 
+Este é o esquema **implementado**. O [DER proposto para transferências](docs/transfer-plan.md#proposed-erd-and-compatibility) acrescenta `reward_operations`, `reward_transfers` e `transaction_id` independente no extrato, permitindo dois lançamentos para uma operação sem perder os IDs antigos.
+
 ~~~mermaid
 erDiagram
     REWARDS_WALLETS {
@@ -511,6 +529,8 @@ WalletName, RewardReason e RewardPoints são armazenados de forma achatada. `rev
 
 ### Migrations
 
+**Planejada, não gerada:** `AddWalletTransfers`. O [plano de migration](docs/transfer-plan.md#planned-migration-addwallettransfers) detalha backfill, chaves/FKs, constraints, compatibilidade dos endpoints existentes, testes de upgrade, restrições de rollback e rollout. As migrations e o snapshot EF atuais permanecem inalterados nesta proposta documental.
+
 As migrations estão versionadas em Infrastructure/Persistence/Migrations, incluindo as evoluções de perfil, ciclo de vida e extrato. Antes de ativar o middleware, Program.cs chama ApplyRewardFlowMigrationsAsync, que executa Database.MigrateAsync. Quando o PostgreSQL não está acessível, a inicialização informa diretamente o comando `docker compose up -d --wait`.
 
 Para criar uma migration após alterar o mapeamento:
@@ -534,6 +554,8 @@ docker compose down --volumes
 ~~~
 
 ## Testes
+
+Os critérios de aceite e concorrência da transferência estão [planejados separadamente](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). Ainda não são cobertos pela suíte atual abaixo.
 
 A suíte xUnit cobre:
 
@@ -559,7 +581,7 @@ Cada evolução futura deve introduzir uma pressão concreta de modelagem e torn
 | --- | --- | --- |
 | Expiração de pontos | Como pontos ganhos em momentos diferentes devem expirar sem quebrar as regras de resgate? | Criar conceitos temporais explícitos, Intention-Revealing Interfaces e Assertions, evitando comparações de datas espalhadas pelos casos de uso. |
 | Política configurável de acúmulo | Como valor da compra, campanha e categoria do membro são convertidos em pontos? | Modelar o cálculo como uma Standalone Class com uma Side-Effect-Free Function, entradas explícitas e resultado previsível. |
-| Transferência entre carteiras | Quais regras e qual fronteira de consistência governam uma movimentação entre duas carteiras? | Avaliar se o comportamento pertence a um Aggregate ou exige um Domain Service, a partir do modelo e não apenas do nome do padrão. |
+| Transferência entre carteiras — planejada | Mover 1..100 pontos de uma origem ativa com saldo para outro destino elegível, atomicamente. | [Plano de implementação](docs/transfer-plan.md): quantidade explícita, cálculo sem mutação, idempotência global e transação envolvendo duas revisões. Ainda não implementado. |
 | Exemplos algébricos e testes baseados em propriedades | Quais propriedades sempre devem valer nas operações com pontos? | Demonstrar Closure of Operations, imutabilidade e invariantes como identidade aditiva e rejeição de resultados negativos. |
 
 Cada incremento deve começar com exemplos, vocabulário e testes que expressem a nova necessidade. Somente depois disso o modelo deve mudar. O README e o orçamento de abstrações também devem registrar a decisão, as alternativas consideradas e a condição que justifica cada novo tipo ou fronteira.
@@ -597,7 +619,7 @@ Este projeto foi inspirado por *Domain-Driven Design: Tackling Complexity in the
 
 ## Documentação, skills e guardrails
 
-O propósito principal é implementar os padrões de Supple Design de Eric Evans de forma objetiva e educacional. Consulte o [índice da documentação](docs/README.md), o [guia dos padrões](docs/supple-design.md), a [análise do projeto](docs/project-analysis.md) e os [guardrails](docs/guardrails.md). O exemplo demonstra seis padrões; não reivindica cobertura integral do capítulo 10, incluindo design declarativo. Intention-Revealing Interfaces trata de contratos públicos que comunicam intenção e não exige uma interface C# para cada tipo.
+O propósito principal é implementar os padrões de Supple Design de Eric Evans de forma objetiva e educacional. A [constitution](docs/constitution.md) define inglês como idioma canônico dos documentos, planos, ADRs, skills, diagramas, código e comentários; este README é a exceção explícita como tradução para português. Consulte o [índice da documentação](docs/README.md), o [guia dos padrões](docs/supple-design.md), a [análise do projeto](docs/project-analysis.md) e os [guardrails](docs/guardrails.md). O exemplo demonstra seis padrões; não reivindica cobertura integral do capítulo 10, incluindo design declarativo. Intention-Revealing Interfaces trata de contratos públicos que comunicam intenção e não exige uma interface C# para cada tipo.
 
 | Recurso | Papel |
 | --- | --- |

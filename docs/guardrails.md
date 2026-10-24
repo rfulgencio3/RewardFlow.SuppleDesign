@@ -1,49 +1,53 @@
-# Guardrails de implementação e revisão
+# Implementation and review guardrails
 
-Estes critérios orientam colaboradores e agentes. Testes e CI verificam somente os comportamentos que exercitam; não verificam automaticamente qualidade didática ou fidelidade conceitual.
+These criteria guide people and agents. Tests verify exercised behavior; educational quality and conceptual accuracy require review.
 
-## Propósito e escopo
+## Purpose, language and scope
 
-Uma alteração deve manter o modelo fácil de explicar com exemplos de fidelidade. Novas funcionalidades precisam de uma regra concreta e de benefício educacional identificável. Expiração, campanhas, transferências e autenticação são possibilidades futuras, não requisitos implícitos. Ajustes de infraestrutura podem ser necessários, mas devem permanecer proporcionais ao exemplo.
+Follow the [constitution](constitution.md): documents, plans, ADRs, skills, diagram labels, code and comments are English. README.pt-BR.md is the explicit translation exception.
 
-## Critérios verificáveis
+Keep the model explainable through reward examples. Features need concrete rules and educational benefit. Transfers have a [proposal](transfer-plan.md), not an implementation. Expiration, campaigns and authentication remain future possibilities. Infrastructure must be proportional to the lesson.
 
-| Guardrail | Onde revisar | Evidência exigida quando afetado |
+## Review criteria
+
+| Guardrail | Location | Evidence when affected |
 | --- | --- | --- |
-| Pontos inteiros entre zero e `long.MaxValue`; movimentos estritamente positivos | `RewardPoints`, `RewardsWallet` | Testes de limites, operação rejeitada preservando estado e resgate do saldo exato |
-| Nomes e motivos normalizados e válidos; identidade não vazia; instantes UTC | Value objects, construtores e casos de uso | Exemplos válidos e inválidos diretamente no núcleo |
-| Regras de ciclo de vida pertencem à carteira | `RewardsWallet` | Estado de origem, destino e operações permitidas; encerramento é terminal |
-| Consultas não salvam nem criam carteiras | Casos de uso de consulta | Resultado e persistência inalterada; não chamar uma consulta com I/O de função pura |
-| Domain não depende de outros projetos; Application depende de Domain; núcleo sem pacotes externos | `.csproj` e imports | Revisão do diff; build não impede que alguém acrescente uma dependência indevida |
-| HTTP valida formato e traduz erros; domínio protege negócio independentemente do HTTP | DTOs, controller e handler | Teste HTTP com os demais campos válidos e teste direto da regra |
-| Alteração do saldo e registro de movimento são atômicos | Repository e ADR-001 | Teste com PostgreSQL demonstrando rollback diante de conflito |
-| Escrita exige revisão; snapshots são isolados | Porta e ambos os adaptadores | Teste de escrita obsoleta e de mutação local que não vaza para o armazenamento |
-| `operationId` é global; replay retorna resultado original; dados diferentes conflitam | Crédito, débito e repository | Repetição, conflito e concorrência nos caminhos alterados |
-| Extrato permanece separado da reconstituição da carteira | Repository e ADR-001 | Consulta paginada limitada, ordenação determinística e carteira carregada sem histórico |
+| Whole points from zero to long.MaxValue; positive movements | RewardPoints, RewardsWallet | Bounds, rejection preserving state, exact-balance redemption |
+| Valid normalized names/reasons, nonempty IDs, UTC instants | Constructors, values, use cases | Valid/invalid core examples |
+| Wallet owns lifecycle | RewardsWallet | Initial/final states, permissions, terminal closure |
+| Queries do not save/create wallets | Query use cases | Results and unchanged persistence; distinguish I/O from pure calculation |
+| Domain has no project dependencies; Application depends on Domain; core has no external packages | csproj/imports | Diff review; build alone does not enforce architecture |
+| HTTP validates format/translates errors; domain protects rules | Contracts, controller, handler | HTTP tests with other fields valid and direct rule tests |
+| Atomic balance/evidence | Repository, ADR-001 | PostgreSQL rollback tests |
+| Revision checks and detached snapshots | Port/adapters | Stale-write rejection and no storage leakage |
+| Global operationId and original-result replay | Use cases/repository | Replay, payload conflict and concurrency |
+| Ledger outside reconstitution | Repository | Bounded/deterministic pagination, wallet loading without history |
 
-Não use `TrySaveAsync` para novos fluxos de crédito/débito da aplicação: movimentos usam `TrySaveMovementAsync`. Não transforme o test double em prova de atomicidade do PostgreSQL. O double atual também não tem a mesma sincronização entre todos os métodos; testes de concorrência relevantes devem usar o adaptador real.
+Use TrySaveMovementAsync for application credit/debit paths, not TrySaveAsync. The current double does not synchronize all methods and cannot prove PostgreSQL atomicity.
 
-## Abstrações e explicações
+Future transfers additionally require domain limits 1..100, distinct wallets, sufficient source balance, lifecycle/overflow checks, calculation without mutation, both revisions and paired entries in one transaction, cross-endpoint ID handling and history-preserving migration. Do not compose independently committing debit/credit cases. These are planned criteria, not current CI coverage. Separate operation and entry identities as proposed by ADR-003.
 
-Antes de adicionar tipo, interface, serviço ou framework, descreva a regra ou fronteira que ele representa e por que os tipos atuais não bastam. Reutilização hipotética e nomes de padrões não justificam camadas. Remova a abstração se ela esconder mais vocabulário do que esclarece. Esta regra pode ser reconsiderada diante de uma necessidade real, com motivação registrada.
+## Abstractions and explanations
 
-Explique intenção e consequência nos comentários educacionais. Não marque todo método com um padrão sem mostrar o benefício. Assertions abrangem pré/pós-condições e invariantes; os testes ajudam a demonstrar a consequência. Standalone Classes admite colaborações pequenas. Closure of Operations descreve o tipo do resultado das operações aceitas, sem prometer álgebra irrestrita.
+Identify a concrete rule/boundary before adding types, interfaces, services or frameworks. Hypothetical reuse and pattern names do not justify layers. Reconsider abstractions obscuring vocabulary and document necessary exceptions.
 
-## Verificação proporcional
+Explain intent and consequences. Assertions include preconditions, postconditions and invariants. Standalone Classes permits small collaborations. Closure of Operations describes accepted result types without unrestricted algebra.
 
-Para mudança de código, execute na raiz:
+## Proportional verification
+
+For code changes, run:
 
 ```powershell
 docker compose up -d --wait
 dotnet test RewardFlow.SuppleDesign.slnx --configuration Release
 ```
 
-Para investigar o núcleo sem PostgreSQL, use `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release --filter "FullyQualifiedName~DomainTests|FullyQualifiedName~ApplicationTests"`. Esse recorte não substitui persistência e HTTP antes de concluir uma mudança que os afete.
+For core-only investigation, use `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release --filter "FullyQualifiedName~DomainTests|FullyQualifiedName~ApplicationTests"`. This does not replace affected persistence/HTTP checks.
 
-Para documentação, confira caminhos, contratos, exemplos e coerência entre READMEs. Skills novas devem passar por `quick_validate.py` da skill-creator, quando disponível. Não crie testes que só procuram frases em Markdown.
+For docs, check links, examples, language, README alignment and implemented/proposed labels. Validate changed skills with skill-creator quick_validate.py when available. Do not test Markdown wording mechanically.
 
-A CI atual executa restore, build Release e a suíte com PostgreSQL. Não há check específico de dependências arquiteturais, seleção de skills ou qualidade pedagógica. Registre checks não executados e sua causa, sem apresentar revisão textual como garantia automatizada.
+Current CI restores, builds Release and tests PostgreSQL. It has no dedicated architecture, language, skill-selection or educational-quality check. Report unexecuted checks and causes.
 
-## Orientação para pessoas e ferramentas
+## People and tools
 
-Leia [AGENTS.md](../AGENTS.md) e use a skill apropriada à tarefa. Ferramentas compatíveis com descoberta local podem carregar as skills em `.agents/skills`; outras precisam receber os arquivos como contexto. Pessoas usam os mesmos critérios na revisão. Invocar uma skill não concede permissão para publicar, enviar mensagens ou alterar recursos externos.
+Read [AGENTS.md](../AGENTS.md) and relevant skills. Compatible tools discover .agents/skills; others need explicit context. People use the same criteria. Skills do not authorize publishing, messaging or unrelated external actions.

@@ -1,72 +1,74 @@
-# Análise do projeto em 24/10/2026
+# Project analysis recorded on 2026-10-24
 
-## Escopo e resultado
+## Scope and result
 
-Foram examinados os quatro projetos de produção, portas, casos de uso, modelos e mapeamentos de persistência, startup, contratos HTTP, testes, READMEs, ADRs, configuração de build, Compose e CI. A execução `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release --verbosity minimal` restaurou, compilou e concluiu **38 testes aprovados, zero falhas e zero ignorados**, com SDK 9.0.308 e PostgreSQL local saudável. Esta avaliação é um retrato dessa revisão, não um certificado de cobertura exaustiva.
+The review examined four production projects, ports, use cases, persistence mappings, startup, HTTP contracts, tests, READMEs, ADRs, build, Compose and CI. `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release --verbosity minimal` restored, built and completed **38 passed, zero failed and zero skipped**, using SDK 9.0.308 and healthy local PostgreSQL. This is historical evidence, not exhaustive certification.
 
-O projeto atende bem à demonstração dos seis padrões centrais apresentados no guia. O principal espaço de melhoria está na precisão das explicações e na ligação entre afirmação, código e teste. Não há necessidade demonstrada de ampliar a arquitetura para alcançar o propósito atual.
+The six guide patterns are demonstrated well. Main improvements concern precision and links between claims, code and tests. The original scope did not justify more architecture.
 
-## Modelo e fronteiras
+## Model and boundaries
 
-`RewardPoints` concentra aritmética, igualdade por valor e limites. `RewardsWallet` controla saldo e ciclo de vida, com setters privados e validação anterior à atribuição. `WalletName` e `RewardReason` explicitam normalização e restrições. Datas entram explicitamente no domínio, enquanto a aplicação usa `TimeProvider`.
+RewardPoints owns arithmetic, equality and bounds. RewardsWallet owns balance/lifecycle with private setters and validation before assignment. WalletName/RewardReason expose normalization. Dates enter Domain explicitly; Application uses TimeProvider.
 
-Casos de uso coordenam carga, comportamento e persistência sem regras de saldo no controller. Resultados de aplicação evitam devolver o agregado mutável ao HTTP. Domain não referencia projetos ou pacotes; Application referencia apenas Domain. Infrastructure depende de Domain; Api compõe Application e Infrastructure. Isso preserva o domínio sem EF Core ou ASP.NET.
+Use cases coordinate load, behavior and persistence without controller balance rules. Results avoid exposing mutable aggregates. Domain has no references/packages; Application and Infrastructure reference Domain; Api composes both. EF Core/ASP.NET stay outside the core.
 
-O adapter PostgreSQL reconstitui instâncias isoladas, atualiza por revisão e salva movimentos em transação. O registro usa chave global de operação e ordenação por instante/ID. O histórico não é carregado com a carteira. Migrations no startup são uma decisão educacional registrada em ADR-002.
+PostgreSQL reconstructs isolated snapshots, updates by revision and saves movements transactionally. Global IDs identify operations; ordering uses timestamp/ID. Wallet loads omit ledger history. ADR-002 explains startup migrations.
 
-## Evidências fortes
+## Strong evidence
 
-| Evidência | O que sustenta |
+| Test | Conclusion |
 | --- | --- |
-| `ArithmeticReturnsNewValuesAndPreservesOperands` | Composição com novos valores e preservação dos operandos |
-| `RejectedOperationsDoNotChangeBalance` | Rejeição de zero, saldo insuficiente e overflow sem alteração de saldo |
-| `LifecycleStateGovernsWalletBehavior` | Crédito em suspensão, débito bloqueado e encerramento terminal |
-| `RepeatedOperationIsIdempotentAndAppearsOnceInTheLedger` | Replay sequencial e conflito por alteração de dados |
-| `StaleSnapshotCannotOverwritePersistedBalance` | Revisão obsoleta não sobrescreve estado no adaptador real |
-| `DuplicateTransactionRollsBackBalanceUpdate` | Falha de inserção do extrato reverte a alteração do saldo |
-| `ConcurrentIdenticalCreditsConvergeOnOneMovement` | Duas chamadas reais de crédito convergem no cenário exercitado |
-| `CreditRetryIsIdempotentAndLedgerIsPaged` | Contrato HTTP de replay e páginas com `hasNextPage` |
+| ArithmeticReturnsNewValuesAndPreservesOperands | New values preserve operands |
+| RejectedOperationsDoNotChangeBalance | Zero, insufficient balance and overflow preserve state |
+| LifecycleStateGovernsWalletBehavior | Suspension permits credit, blocks debit; closure is terminal |
+| RepeatedOperationIsIdempotentAndAppearsOnceInTheLedger | Sequential replay and changed-payload conflict |
+| StaleSnapshotCannotOverwritePersistedBalance | Real adapter rejects stale writes |
+| DuplicateTransactionRollsBackBalanceUpdate | Ledger conflict rolls back balance |
+| ConcurrentIdenticalCreditsConvergeOnOneMovement | Concurrent real credits converge in the exercised scenario |
+| CreditRetryIsIdempotentAndLedgerIsPaged | HTTP replay and hasNextPage |
 
-Os testes estão em [test/RewardFlow.SuppleDesign.Tests](../test/RewardFlow.SuppleDesign.Tests).
+See [tests](../test/RewardFlow.SuppleDesign.Tests).
 
-## Achados e prioridades
+## Findings
 
-### Precisão didática — prioridade alta
+### Educational precision — high
 
-O README associa interfaces C# a Intention-Revealing Interfaces. A escolha é válida como recurso local, mas o leitor precisa entender que nomes e contratos de classes concretas também expressam intenção. Do mesmo modo, camadas técnicas não são a definição de Conceptual Contours.
+C# interfaces are a valid teaching device, but concrete public contracts also reveal intention. Technical layers alone are not Conceptual Contours.
 
-`ListRewardTransactions` tem comentário de Side-Effect-Free Function, mas realiza I/O. Pode ser descrito como consulta sem mutação; os melhores exemplos de cálculo previsível estão em `RewardPoints`. `CanAfford` não muda estado, mas depende do estado atual da carteira. O [guia](supple-design.md) explicita essas diferenças.
+ListRewardTransactions performs I/O despite a Side-Effect-Free Function comment. Describe a query without mutation; RewardPoints is a stronger calculation example. CanAfford depends on receiver state. The [guide](supple-design.md) clarifies these limits.
 
-O capítulo também discute design declarativo. O projeto demonstra seis padrões e não oferece uma lição dedicada sobre esse tema. A documentação deve declarar esse limite. Não é preciso implementar uma DSL para preencher uma lista.
+Declarative design has no dedicated lesson. Declare that limit rather than adding a DSL to fill a checklist.
 
-### Precisão do README e exemplos — prioridade alta
+### Original README accuracy — high
 
-O README inglês afirma que comandos e consultas de saldo retornam apenas `points`; créditos e débitos retornam `RewardMovementResponse`, com `balanceAfter`. Também diz que consultas de capacidade em carteiras suspensas são rejeitadas; o código retorna false. Essas afirmações precisam corresponder ao comportamento.
+The original English README incorrectly described movement responses as points-only and suspended affordability queries as rejected. Movement responses use balanceAfter; affordability returns false. The preceding documentation delivery corrected these claims; this record preserves the diagnosis.
 
-O exemplo `.http` usa IDs de operação fixos e globais. Executá-lo com outra carteira sem trocar os IDs pode produzir 409. O material de contribuição deve orientar novos IDs para operações novas e preservação do ID em retries.
+The .http file uses fixed global IDs. Reusing them with another wallet can return 409. Guidance now calls for fresh IDs for new operations and reuse only for retries.
 
-### Testes — prioridade média
+### Tests — medium
 
-`InvalidPointsReturnBadRequest` usa corpos sem `operationId` e `reason`. O status 400 pode decorrer desses campos, mascarando regressões na validação de pontos. Em futura alteração desse teste, mantenha os demais campos válidos para isolar o comportamento.
+InvalidPointsReturnBadRequest omits operationId/reason; those missing fields can mask point-validation regressions. Keep other fields valid.
 
-O README inglês atribui à suíte cenários como persistência entre reinícios da API e ausência de consulta COUNT. A inspeção não encontrou testes específicos que provem essas duas afirmações. Persistência é compatível com o adapter e volume; isso é distinto de teste de reinício. O repository usa `pageSize + 1`, mas não há teste instrumentando SQL para impedir COUNT.
+The original README overstated restart and no-COUNT test coverage. No dedicated tests establish those claims. Storage supports durability; pageSize+1 avoids counting in implementation. READMEs now distinguish implementation from tests.
 
-Faltam exemplos dedicados para limites de motivo, instantes não UTC, enum inválido, replay de débito e reutilização de ID em outra carteira/direção. A suíte atual não deve ser apresentada como cobertura completa dessas combinações. Acrescente testes quando corrigir ou evoluir os comportamentos correspondentes.
+Dedicated reason-bound, non-UTC, invalid-enum, debit-replay and cross-wallet/direction ID cases remain absent. Do not claim exhaustive coverage.
 
-### Contratos e concorrência — prioridade média
+### Contracts/concurrency — medium
 
-`ListRewardTransactions.ExecuteAsync` depende dos limites definidos no controller; chamadas diretas podem fornecer página/tamanho inválidos e causar overflow ou paginação sem sentido. Antes de um segundo adapter, convém tornar a pré-condição explícita na aplicação e testá-la.
+ListRewardTransactions relies on controller pagination bounds. Direct callers can cause overflow or meaningless pages. Make Application preconditions explicit before another adapter.
 
-O double em memória bloqueia `TrySaveMovementAsync`, mas `TrySaveAsync` e leituras não usam o mesmo lock. Portanto, ele não demonstra isolamento completo diante de movimentos e transições simultâneos. Testes concorrentes críticos devem continuar no PostgreSQL.
+The double locks movement writes but not all status writes/reads; it does not prove complete concurrent isolation. Use PostgreSQL for critical cases.
 
-O teste de créditos concorrentes usa `Task.WhenAll` sem barreira que force ambos a carregar a mesma revisão. É uma evidência útil do cenário executado, mas não garante que toda janela de corrida tenha sido exercitada.
+Task.WhenAll in the concurrent credit test does not force both callers to load the same revision. The test supports its exercised scenario, not every race window.
 
-### Identidade e invariantes entre objetos — prioridade baixa
+### Identity/cross-object invariants — low
 
-`RewardTransaction` é descrita como Entity, mas um record compara todos os seus campos. O `operationId` identifica o negócio e é chave no banco; a semântica de `Equals` merece explicação antes de usar transações como entidades em coleções.
+RewardTransaction has business identity but structural record equality. Explain the distinction before entity collection use.
 
-A porta aceita carteira e transação separadas. O adapter não verifica que `WalletId` e `BalanceAfter` do registro correspondem à carteira recebida. Os casos de uso atuais constroem o par corretamente; não afirmar que a assinatura protege, sozinha, essa consistência contra qualquer chamador.
+The save port takes wallet/transaction separately without adapter checks for matching WalletId/BalanceAfter. Current use cases construct matching pairs; the signature alone does not prevent inconsistent callers.
 
-## Decisão para esta entrega
+## Follow-up planning
 
-Criar instruções centrais, guia, guardrails e skills locais; alinhar READMEs e registrar os achados. Manter os achados de implementação como próximos incrementos explícitos, sem aproveitar a documentação para mudar contratos ou regras. Uma evolução futura deve partir de um exemplo concreto e mostrar o efeito no modelo.
+The requested [transfer plan](transfer-plan.md) introduces a concrete need for a two-wallet calculation and wider transaction, recorded in [proposed ADR-003](decisions/003-atomic-wallet-transfers.md). Interpret 100 points per transfer and require source funding. The 38 historical tests do not establish implemented transfers.
+
+This delivery changes guidance/planning only. Runtime findings remain future increments. The [constitution](constitution.md) establishes English documentation with README.pt-BR.md as the translation exception.

@@ -1,13 +1,13 @@
-# Documentação do RewardFlow
+# RewardFlow documentation
 
-O objetivo central é ensinar Supple Design com código pequeno, legível e verificável.
+The purpose is to teach Supple Design through small, readable and verifiable code. English is canonical; README.pt-BR.md is the explicit translation exception.
 
-| Documento | Quando consultar |
+| Document | When to read it |
 | --- | --- |
-| [Análise do projeto](project-analysis.md) | Entender a avaliação do código, README e testes em 24/10/2026 |
-| [Guia de Supple Design](supple-design.md) | Relacionar cada padrão a comportamento observável e testes |
-| [Guardrails](guardrails.md) | Implementar ou revisar uma mudança preservando o objetivo educacional |
-| [Decisões arquiteturais](decisions/README.md) | Entender extrato, idempotência e migrations no startup |
-| [Instruções para agentes](../AGENTS.md) | Localizar regras essenciais e skills do repositório |
-
-Os documentos de análise e orientação estão em português. O README principal possui versões em inglês e português.
+| [Constitution](constitution.md) | Purpose, canonical language and evidence requirements |
+| [Project analysis](project-analysis.md) | Code, README and test review recorded on 2026-10-24 |
+| [Supple Design guide](supple-design.md) | Pattern mapping, behavior and limits |
+| [Guardrails](guardrails.md) | Implementation and review criteria |
+| [Transfer plan](transfer-plan.md) | Proposed endpoint, rules, atomicity, diagrams, ERD, migration and tests |
+| [Architecture decisions](decisions/README.md) | Accepted decisions and the proposed transfer boundary |
+| [Agent instructions](../AGENTS.md) | Essential rules and repository skills |

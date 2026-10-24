@@ -1,16 +1,18 @@
 ---
 name: rewardflow-evolve
-description: Evoluir regras, value objects e casos de uso do RewardFlow preservando sua demonstração educacional de Supple Design. Use para alterações de comportamento do modelo; não para correções isoladas de texto.
+description: Evolve RewardFlow business rules, value objects and use cases while preserving its educational Supple Design examples. Use for model behavior changes, not isolated wording fixes.
 ---
 
-# Evoluir o modelo do RewardFlow
+# Evolve the RewardFlow model
 
-Leia `AGENTS.md` na raiz e `docs/guardrails.md`. Use `docs/supple-design.md` para distinguir o padrão de sua adaptação C#.
+Read root AGENTS.md, docs/constitution.md and docs/guardrails.md. Use docs/supple-design.md to distinguish patterns from local C# adaptations.
 
-Antes de editar, formule a regra com entrada, resultado e caso rejeitado. Identifique quem possui o estado e a invariante: pontos calculam, carteira governa saldo/ciclo de vida, aplicação coordena e adapter persiste. Leia o caso de uso afetado e seus testes.
+Write documents, plans, ADRs, skills, diagram labels, code and code comments in English. README.md is canonical; README.pt-BR.md is the explicit translation exception. Conversation language does not change repository language.
 
-Implemente a menor mudança que torne o conceito explícito. Para novas abstrações, explique a necessidade concreta e o custo para quem está aprendendo. Não acrescente frameworks ou padrões apenas para aumentar a demonstração.
+Express the rule with inputs, expected results and a rejected case. Identify invariant ownership: points calculate, wallets govern balance/lifecycle, Application coordinates, adapters persist. Read affected use cases and tests.
 
-Teste o comportamento na camada que decide a regra. Mudança em movimento exige verificar estado preservado em falha; se tocar persistência, valide revisão, idempotência e atomicidade com PostgreSQL. Use relógio explícito para exemplos temporais.
+Make the smallest change exposing the concept. Justify new abstractions with a concrete need and learning cost. Do not add frameworks merely to expand the demonstration.
 
-Atualize comentários e os dois READMEs apenas nas afirmações afetadas. Registre ADR quando alterar uma fronteira ou decisão com efeito em vários tipos. Ao concluir, informe exemplo antes/depois, benefício educacional, testes executados e limites restantes.
+Test behavior at the layer deciding the rule. Movement changes require state preservation on rejection. Persistence changes require PostgreSQL evidence for revisions, idempotency and atomicity. Use explicit clocks. For transfers, consult docs/transfer-plan.md and ADR-003; they remain proposals until implemented.
+
+Update affected comments and shared README claims. Add an ADR for decisions spanning types. Report before/after behavior, educational benefit, checks and remaining limits.

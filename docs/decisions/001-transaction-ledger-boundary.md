@@ -1,6 +1,7 @@
 # ADR-001: Transaction ledger boundary
 
 - Status: Accepted
+- Planned extension: [ADR-003](003-atomic-wallet-transfers.md) proposes separating ledger entry identity from operation identity for transfers. The schema described below is still the implemented schema.
 - Date: 2026-10-23
 
 ## Context

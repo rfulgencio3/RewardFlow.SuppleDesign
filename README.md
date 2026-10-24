@@ -112,6 +112,8 @@ Compose starts the pinned PostgreSQL image with the local development credential
 
 ## How to perform wallet actions
 
+Routes are implemented unless marked planned. Transfers are a proposal and cannot be called yet; see the [implementation plan](docs/transfer-plan.md).
+
 Start the API first, then choose one of these entry points: execute requests in Swagger at [http://localhost:5180/](http://localhost:5180/), open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) in a compatible HTTP client, or use the PowerShell walkthrough below.
 
 Use one wallet ID throughout a flow. A wallet must be opened before any command or query addresses it.
@@ -122,6 +124,7 @@ Use one wallet ID throughout a flow. A wallet must be opened before any command 
 | Read wallet details | `GET /api/wallets/{id}` | No body | `200 OK` with name, status, creation time and balance |
 | Credit earned points | `POST /api/wallets/{id}/credit` | `{ "operationId": "uuid", "points": 100, "reason": "Purchase" }` | `200 OK` with the movement and resulting balance |
 | Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "operationId": "uuid", "points": 40, "reason": "Redemption" }` | `200 OK`, provided the wallet can afford the amount |
+| Transfer points — planned | POST /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, 1..100 points and reason | Proposed 200 with both resulting balances; source must have sufficient balance; atomic save |
 | Read the balance | `GET /api/wallets/{id}/balance` | No body | `200 OK` with the current points |
 | Check affordability | `GET /api/wallets/{id}/can-afford?requiredPoints=60` | Non-negative whole points in the query string | `200 OK` with `canAfford`; the balance is unchanged |
 | Read transaction history | `GET /api/wallets/{id}/transactions?page=1&pageSize=20` | A page of 1 to 100 items | `200 OK` in reverse chronological order with `hasNextPage` |
@@ -188,6 +191,8 @@ The application generates a non-empty wallet ID and records its UTC creation ins
 
 ## How a request flows through the project
 
+This diagram shows the current credit flow. The proposed two-wallet transfer sequence and rollback branches are in the [transfer plan](docs/transfer-plan.md#sequence-and-atomicity).
+
 The credit operation shows how the adapters and core collaborate without moving business rules into the controller or repository:
 
 ```mermaid
@@ -222,6 +227,8 @@ sequenceDiagram
 Debit follows the same command path. Balance and affordability are queries: they load a snapshot but never call `TrySaveAsync`; `CanAfford` does not mutate the aggregate. Known domain and application failures cross back to `ApiExceptionHandler`, which translates them into HTTP Problem Details at the outer boundary.
 
 ## Architecture: Clean Architecture and Hexagonal Ports
+
+The diagram below represents the running system. The [proposed transfer architecture](docs/transfer-plan.md#proposed-architecture) adds a domain calculator and a specific atomic persistence capability without introducing new architectural layers.
 
 ```mermaid
 flowchart LR
@@ -292,6 +299,8 @@ The repository interface is owned by Domain as the requested outbound port. Appl
 Domain has no project or package references. Application and Infrastructure reference Domain independently. Infrastructure does not know about HTTP, and Application does not reference Infrastructure. API references Infrastructure only to select the concrete adapter in the composition root. Domain objects are never serialized directly as HTTP contracts.
 
 ## Project structure
+
+Planned files for transfers, DTOs, persistence mappings and tests are listed by implementation phase in the [transfer plan](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). They are not part of the current tree below.
 
 The folders are architectural boundaries rather than technical buckets. Each project has one direction of responsibility and a deliberately small public surface:
 
@@ -386,6 +395,8 @@ RewardFlow.SuppleDesign/
 
 ## Evans' model building blocks and RewardFlow
 
+The current diagram remains unchanged. The proposed transfer adds a justified domain service for a calculation involving two wallets; application orchestration remains separate. See [ADR-003 (Proposed)](docs/decisions/003-atomic-wallet-transfers.md).
+
 The supplied book figure presents Evans' broader **Model-Driven Design building blocks**. It complements Chapter 10, but it is not itself the Supple Design pattern diagram: Entities, Value Objects, Aggregates, Repositories, Services and Factories are tactical building blocks; Intention-Revealing Interfaces, Side-Effect-Free Functions, Assertions, Conceptual Contours, Standalone Classes and Closure of Operations make that model supple.
 
 The correspondence in this solution is:
@@ -466,6 +477,8 @@ XML comments above public classes, interfaces, and methods identify the relevant
 
 ## Abstraction budget
 
+Proposed transfer additions have concrete responsibilities: `TransferAmount` owns the 1..100 limit, `RewardTransferCalculator` computes both results without mutation, and transfer evidence records the paired operation. The operation registry separates idempotency from ledger entry identity. Their justification and alternatives are in the [plan](docs/transfer-plan.md); none is implemented yet.
+
 Supple Design favors code that exposes the model with the least machinery needed to protect it. Every abstraction in this sample therefore needs a current reason to exist and a clear condition under which it should be reconsidered.
 
 | Abstraction | Why it exists now | Reconsider it when |
@@ -493,12 +506,15 @@ The records preserve the reasoning so readers can distinguish a deliberate conce
 
 ## HTTP contract and errors
 
+This table lists current routes and explicitly marked proposals. The proposed `POST /api/wallets/{sourceWalletId}/transfers` contract, request/response examples and errors are in the [plan](docs/transfer-plan.md#proposed-http-contract); it is not an available endpoint.
+
 | Method | Route | Request body | Success |
 | --- | --- | --- | --- |
 | POST | `/api/wallets` | `{"name":"Primary rewards"}` | 201, generated ID and wallet location |
 | GET | `/api/wallets/{id}` | none | 200 and wallet details |
 | POST | `/api/wallets/{id}/credit` | operation ID, points and reason | 200 and accepted movement |
 | POST | `/api/wallets/{id}/debit` | operation ID, points and reason | 200 and accepted movement |
+| POST — planned | /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, points (1..100), reason | Proposed 200, original transfer result; not available yet |
 | GET | `/api/wallets/{id}/transactions?page=1&pageSize=20` | No body | 200 and a ledger page |
 | GET | `/api/wallets/{id}/balance` | none | 200 and current balance |
 | GET | `/api/wallets/{id}/can-afford?requiredPoints=60` | none | 200 and affordability result |
@@ -539,6 +555,8 @@ The connection string is read from `ConnectionStrings:RewardFlow`. Local setting
 
 ### Database schema (ERD)
 
+This is the **implemented** schema. The [proposed transfer ERD](docs/transfer-plan.md#proposed-erd-and-compatibility) introduces `reward_operations`, `reward_transfers` and an independent ledger `transaction_id`, allowing two entries for one operation while preserving existing operation IDs.
+
 The schema separates current wallet state from its immutable ledger. `WalletName`, `RewardReason` and `RewardPoints` are flattened value objects, while `revision` belongs to persistence coordination rather than to the aggregate.
 
 ```mermaid
@@ -567,6 +585,8 @@ Check constraints reject blank names, unsupported status values, negative points
 
 ### Migrations
 
+**Planned, not generated:** `AddWalletTransfers`. The [migration plan](docs/transfer-plan.md#planned-migration-addwallettransfers) specifies backfill, key/FK changes, constraints, old endpoint compatibility, upgrade tests, rollback restrictions and rollout. Existing migrations and the EF snapshot are unchanged by this documentation-only proposal.
+
 The schema migrations are versioned under `Infrastructure/Persistence/Migrations`, including the incremental wallet-profile and lifecycle change. `Program.cs` calls `ApplyRewardFlowMigrationsAsync` before middleware is activated, and that adapter helper invokes `Database.MigrateAsync`.
 
 To create a migration after changing only the persistence mapping:
@@ -593,6 +613,8 @@ docker compose down --volumes
 
 ## Tests
 
+Transfer acceptance and concurrency scenarios are [planned separately](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). They are not covered by the current suite below.
+
 The xUnit suite covers:
 
 - Value equality, new-value arithmetic, operand immutability, bounds, overdrafts, and overflow.
@@ -616,7 +638,7 @@ Future additions should introduce a concrete modeling pressure and make its effe
 | --- | --- | --- |
 | Points expiration | How should points earned at different times expire while preserving valid redemption rules? | Introduce explicit temporal concepts, Intention-Revealing Interfaces and Assertions instead of spreading date comparisons across use cases. |
 | Configurable earning policy | How are purchase amount, campaign and membership tier converted into points? | Model the calculation as a Standalone Class with a Side-Effect-Free Function whose inputs and result are explicit. |
-| Transfer between wallets | Which rules and consistency boundary govern movement involving two wallets? | Evaluate whether the behavior belongs to an Aggregate or requires a Domain Service, based on the model rather than the pattern name. |
+| Transfer between wallets — planned | Move 1..100 points from a funded active source to a different eligible destination, atomically. | [Implementation plan](docs/transfer-plan.md): explicit amount, calculation without mutation, global idempotency and a transaction spanning two wallet revisions. Not implemented. |
 | Algebraic and property-based examples | Which properties always hold for reward-point operations? | Demonstrate Closure of Operations, immutability and invariants with properties such as additive identity and rejected underflow. |
 
 Each increment should begin with examples, vocabulary and failing tests. Only then should the model change. The README and abstraction budget should be updated with the new decision, alternatives considered and the condition that justifies every new type or boundary.
@@ -674,7 +696,7 @@ Contributions can range from typo fixes and clearer examples to new adapters, st
 
 ## Documentation, skills and guardrails
 
-The primary goal is an objective, educational implementation of Eric Evans' Supple Design patterns. Start with the [documentation index](docs/README.md), [pattern guide](docs/supple-design.md), [project analysis](docs/project-analysis.md) and [guardrails](docs/guardrails.md). These supporting documents are in Portuguese. The sample demonstrates six patterns; it does not claim complete coverage of Chapter 10, including declarative design. Intention-Revealing Interfaces concerns meaningful public contracts and does not require a C# interface for every type.
+The primary goal is an objective, educational implementation of Eric Evans' Supple Design patterns. Start with the [documentation index](docs/README.md), [pattern guide](docs/supple-design.md), [project analysis](docs/project-analysis.md) and [guardrails](docs/guardrails.md). English is the canonical language of documentation, plans, ADRs, skills, diagrams, code and comments, as required by the [constitution](docs/constitution.md). README.pt-BR.md is the explicit Portuguese translation exception. The sample demonstrates six patterns; it does not claim complete coverage of Chapter 10, including declarative design. Intention-Revealing Interfaces concerns meaningful public contracts and does not require a C# interface for every type.
 
 | Resource | Role |
 | --- | --- |

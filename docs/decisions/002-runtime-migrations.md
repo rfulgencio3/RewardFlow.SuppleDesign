@@ -1,6 +1,7 @@
 # ADR-002: Runtime migrations for the educational API
 
 - Status: Accepted
+- Planning note: [ADR-003](003-atomic-wallet-transfers.md) and the [transfer plan](../transfer-plan.md) describe a future AddWalletTransfers migration. No migration is created or applied by the planning documentation; the startup policy below is unchanged.
 - Date: 2026-10-23
 
 ## Context
