@@ -662,7 +662,7 @@ docker compose down --volumes
 
 ## Tests
 
-The Release suite passes 70 tests. [Transfer verification](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria) covers domain rules, HTTP, two-wallet revision checks, competing/opposite transfers, injected rollback and migration preservation. It does not claim every possible interleaving is covered.
+The Release suite passes 77 tests. [Transfer verification](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria) covers domain rules, HTTP, two-wallet revision checks, competing/opposite transfers, injected rollback and migration preservation. It does not claim every possible interleaving is covered.
 
 The xUnit suite covers:
 
@@ -675,6 +675,7 @@ The xUnit suite covers:
 - Ledger pagination and `hasNextPage`. The implementation fetches one extra item instead of issuing a count query; the suite verifies pagination results rather than SQL query counts.
 - PostgreSQL mapping, startup migration and conditional revision updates through the real adapter. Persistence across API restarts follows from PostgreSQL storage; the suite does not include a dedicated restart test.
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
+- Point-field validation on both credit and debit uses valid wallets, operation identities and reasons, so omitted/null, zero, negative, fractional and overflowing points are tested independently. Malformed JSON has separate cases.
 - Meaningful Swagger examples that remain independent from HTTP validation implementation.
 
 Database tests use fresh wallet identities. The migration test creates and drops its own temporary database, so the configured test user needs CREATEDB permission (provided by the local Compose user). Start PostgreSQL with `docker compose up -d --wait`; `dotnet test RewardFlow.SuppleDesign.slnx` then builds the solution, applies pending migrations and executes the suite without starting an external HTTP server. Application tests use the in-memory repository only as a fast test double for the same port semantics.

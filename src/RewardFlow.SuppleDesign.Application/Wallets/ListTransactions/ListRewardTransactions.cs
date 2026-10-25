@@ -10,7 +10,8 @@ public interface IListRewardTransactions
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>Side-Effect-Free Function: reads transaction history through the repository port.</summary>
+/// <summary>Read-only application query: loads transaction history through the repository port without changing wallet state.</summary>
+/// <remarks>Performs persistence I/O; immutable point arithmetic, rather than a database read, demonstrates a pure calculation.</remarks>
 public sealed class ListRewardTransactions(IRewardsWalletRepository repository) : IListRewardTransactions
 {
     /// <inheritdoc />

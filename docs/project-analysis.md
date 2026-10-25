@@ -35,7 +35,7 @@ See [tests](../test/RewardFlow.SuppleDesign.Tests).
 
 C# interfaces are a valid teaching device, but concrete public contracts also reveal intention. Technical layers alone are not Conceptual Contours.
 
-ListRewardTransactions performs I/O despite a Side-Effect-Free Function comment. Describe a query without mutation; RewardPoints is a stronger calculation example. CanAfford depends on receiver state. The [guide](supple-design.md) clarifies these limits.
+The original ListRewardTransactions comment labeled its persistence I/O as a Side-Effect-Free Function. The follow-up correction now describes a read-only application query and explicitly distinguishes persistence I/O from pure calculation. RewardPoints remains the stronger calculation example; CanAfford depends on receiver state. The [guide](supple-design.md) clarifies these limits.
 
 Declarative design has no dedicated lesson. Declare that limit rather than adding a DSL to fill a checklist.
 
@@ -47,7 +47,7 @@ The .http file uses fixed global IDs. Reusing them with another wallet can retur
 
 ### Tests — medium
 
-InvalidPointsReturnBadRequest omits operationId/reason; those missing fields can mask point-validation regressions. Keep other fields valid.
+The original InvalidPointsReturnBadRequest omitted operationId/reason, masking possible point-validation regressions. The follow-up correction supplies valid identities, reasons and existing wallets for both credit and debit; it varies only points and asserts the validation error names that field. Malformed JSON is tested separately. The 14 focused cases cover omitted/null, zero, negative, fractional and overflowing points, plus malformed bodies on both routes.
 
 The original README overstated restart and no-COUNT test coverage. No dedicated tests establish those claims. Storage supports durability; pageSize+1 avoids counting in implementation. READMEs now distinguish implementation from tests.
 
@@ -71,4 +71,4 @@ The save port takes wallet/transaction separately without adapter checks for mat
 
 The delivered [transfer implementation](transfer-plan.md) introduces a concrete need for a two-wallet calculation and wider transaction, recorded in [ADR-003](decisions/003-atomic-wallet-transfers.md). Interpret 100 points per transfer and require source funding. The 38 historical tests do not establish implemented transfers.
 
-The follow-up implementation now passes 70 Release tests, including real transfer rollback/concurrency, HTTP and isolated-database migration cases. The double now synchronizes all methods. The earlier 38-test evidence and remaining unrelated findings are retained as history. The [constitution](constitution.md) establishes English documentation with README.pt-BR.md as the translation exception.
+The transfer delivery passed 70 Release tests, including real transfer rollback/concurrency, HTTP and isolated-database migration cases. The subsequent validation follow-up passes 77 tests after isolating point-field failures on both credit and debit and separating malformed JSON. The double now synchronizes all methods. The earlier 38-test evidence and remaining unrelated findings are retained as history. The [constitution](constitution.md) establishes English documentation with README.pt-BR.md as the translation exception.
