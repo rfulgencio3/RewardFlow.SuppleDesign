@@ -11,6 +11,14 @@ namespace RewardFlow.SuppleDesign.Application.Wallets;
 /// </remarks>
 internal static class WalletPersistence
 {
+    /// <summary>Prevents ordinary movement paths from replaying a transfer's individual ledger entry.</summary>
+    internal static async Task<RewardTransaction?> FindMovementAsync(IRewardsWalletRepository repository,
+        Guid operationId, CancellationToken cancellationToken)
+    {
+        if (await repository.FindOperationKindAsync(operationId, cancellationToken) == RewardOperationKind.Transfer)
+            throw new WalletConflictException("The operation ID was already used for a reward transfer.");
+        return await repository.FindTransactionAsync(operationId, cancellationToken);
+    }
     /// <summary>Assertions: a command or query must address an existing, identified wallet.</summary>
     internal static async Task<WalletSnapshot> LoadAsync(
         IRewardsWalletRepository repository,
@@ -40,9 +48,9 @@ internal static class WalletPersistence
     {
         var result = await repository.TrySaveMovementAsync(snapshot.Wallet, transaction, snapshot.Revision, cancellationToken);
         if (result == MovementSaveResult.Saved)
-            return await repository.FindTransactionAsync(transaction.OperationId, cancellationToken)
+            return await FindMovementAsync(repository, transaction.OperationId, cancellationToken)
                 ?? throw new WalletConflictException("The saved reward operation could not be reloaded.");
-        var replay = await repository.FindTransactionAsync(transaction.OperationId, cancellationToken);
+        var replay = await FindMovementAsync(repository, transaction.OperationId, cancellationToken);
         if (replay is not null)
             return replay;
         if (result == MovementSaveResult.DuplicateOperation)

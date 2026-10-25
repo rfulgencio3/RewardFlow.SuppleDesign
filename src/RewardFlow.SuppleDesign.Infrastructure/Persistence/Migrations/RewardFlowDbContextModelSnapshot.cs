@@ -22,11 +22,29 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransactionState", b =>
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardOperationState", b =>
                 {
                     b.Property<Guid>("OperationId")
                         .HasColumnType("uuid")
                         .HasColumnName("operation_id");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.HasKey("OperationId");
+
+                    b.ToTable("reward_operations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reward_operations_kind_valid", "kind BETWEEN 0 AND 2");
+                        });
+                });
+
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransactionState", b =>
+                {
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transaction_id");
 
                     b.Property<long>("BalanceAfter")
                         .HasColumnType("bigint")
@@ -35,6 +53,10 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("OccurredAtUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("occurred_at_utc");
+
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
 
                     b.Property<long>("Points")
                         .HasColumnType("bigint")
@@ -54,7 +76,10 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("wallet_id");
 
-                    b.HasKey("OperationId");
+                    b.HasKey("TransactionId");
+
+                    b.HasIndex("OperationId", "WalletId")
+                        .IsUnique();
 
                     b.HasIndex("WalletId", "OccurredAtUtc");
 
@@ -67,6 +92,60 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_reward_transactions_reason_not_blank", "length(btrim(reason)) > 0");
 
                             t.HasCheckConstraint("ck_reward_transactions_type_valid", "type BETWEEN 0 AND 1");
+                        });
+                });
+
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransferState", b =>
+                {
+                    b.Property<Guid>("OperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operation_id");
+
+                    b.Property<long>("DestinationBalanceAfter")
+                        .HasColumnType("bigint")
+                        .HasColumnName("destination_balance_after");
+
+                    b.Property<Guid>("DestinationWalletId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_wallet_id");
+
+                    b.Property<DateTimeOffset>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at_utc");
+
+                    b.Property<long>("Points")
+                        .HasColumnType("bigint")
+                        .HasColumnName("points");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reason");
+
+                    b.Property<long>("SourceBalanceAfter")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_balance_after");
+
+                    b.Property<Guid>("SourceWalletId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_wallet_id");
+
+                    b.HasKey("OperationId");
+
+                    b.HasIndex("DestinationWalletId");
+
+                    b.HasIndex("SourceWalletId");
+
+                    b.ToTable("reward_transfers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_reward_transfers_amount", "points BETWEEN 1 AND 100");
+
+                            t.HasCheckConstraint("ck_reward_transfers_balances", "source_balance_after >= 0 AND destination_balance_after >= 0");
+
+                            t.HasCheckConstraint("ck_reward_transfers_distinct_wallets", "source_wallet_id <> destination_wallet_id");
+
+                            t.HasCheckConstraint("ck_reward_transfers_reason", "length(btrim(reason)) > 0");
                         });
                 });
 
@@ -114,13 +193,40 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransactionState", b =>
                 {
+                    b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardOperationState", null)
+                        .WithMany()
+                        .HasForeignKey("OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardsWalletState", "Wallet")
                         .WithMany()
                         .HasForeignKey("WalletId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Wallet");
+                });
+
+            modelBuilder.Entity("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransferState", b =>
+                {
+                    b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardsWalletState", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationWalletId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardOperationState", null)
+                        .WithOne()
+                        .HasForeignKey("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardTransferState", "OperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RewardFlow.SuppleDesign.Infrastructure.Persistence.Models.RewardsWalletState", null)
+                        .WithMany()
+                        .HasForeignKey("SourceWalletId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

@@ -5,6 +5,7 @@ namespace RewardFlow.SuppleDesign.Infrastructure.Persistence.Models;
 /// <summary>Persistence projection of an immutable reward transaction.</summary>
 internal sealed class RewardTransactionState
 {
+    public Guid TransactionId { get; set; }
     public Guid OperationId { get; set; }
     public Guid WalletId { get; set; }
     public RewardTransactionType Type { get; set; }

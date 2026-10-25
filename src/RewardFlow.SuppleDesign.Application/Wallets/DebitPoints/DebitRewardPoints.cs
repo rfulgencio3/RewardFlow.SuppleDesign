@@ -24,7 +24,7 @@ public sealed class DebitRewardPoints(IRewardsWalletRepository repository, TimeP
         DomainAssertions.OperationIdentity(operationId);
         var redeemedPoints = new RewardPoints(points);
         var rewardReason = new RewardReason(reason);
-        var existing = await repository.FindTransactionAsync(operationId, cancellationToken);
+        var existing = await WalletPersistence.FindMovementAsync(repository, operationId, cancellationToken);
         if (existing is not null)
             return EnsureSameOperation(existing, walletId, RewardTransactionType.Debit, redeemedPoints, rewardReason);
         var snapshot = await WalletPersistence.LoadAsync(repository, walletId, cancellationToken);

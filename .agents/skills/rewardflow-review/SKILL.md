@@ -1,16 +1,18 @@
 ---
 name: rewardflow-review
-description: Revisar código e documentação do RewardFlow quanto a correção das regras e precisão didática de Supple Design. Use para avaliação do projeto, revisão de mudanças ou alinhamento entre README, implementação e testes.
+description: Review RewardFlow code and documentation for business correctness and educational accuracy of Supple Design. Use for project assessments, change reviews and README, implementation and test alignment.
 ---
 
-# Revisar o RewardFlow
+# Review RewardFlow
 
-Leia `AGENTS.md`, `docs/supple-design.md` e os critérios relevantes de `docs/guardrails.md`. `docs/project-analysis.md` é um retrato anterior: confirme os achados no código atual.
+Read AGENTS.md, docs/constitution.md, docs/supple-design.md and relevant docs/guardrails.md criteria. docs/project-analysis.md is historical evidence; verify findings against current code.
 
-Siga uma operação do contrato público até o domínio e a persistência. Relacione cada afirmação de padrão ao método que a demonstra e ao teste que observa seu efeito. Separe comportamento implementado, comportamento testado e intenção futura.
+Check English for documents, plans, ADRs, skills, diagram labels, code and comments. README.pt-BR.md is the explicit translation exception; align its technical claims with canonical README.md.
 
-Verifique especialmente: interface C# versus intenção do contrato; consulta com I/O versus cálculo sem mutação; fechamento das operações versus limites e rejeições; contorno de negócio versus pasta técnica; identidade operacional versus igualdade de records.
+Trace operations from public contracts through Domain to persistence. Link pattern claims to methods and observable tests. Separate implemented behavior, tested behavior and future intent.
 
-Quando a mudança afetar movimentos, examine replay, dados conflitantes, revisão obsoleta e gravação de saldo/extrato. Não aceite um double como evidência suficiente de transações PostgreSQL. Nos testes HTTP de validação, verifique se outros campos inválidos podem mascarar a regra examinada.
+Check C# interfaces versus intention-revealing contracts; I/O versus calculations without mutation; type closure versus bounds/rejections; business contours versus technical folders; identity versus record equality.
 
-Reporte achados por impacto, com arquivo/método, situação concreta, consequência e correção mínima sugerida. Reconheça escolhas didáticas justificadas e não proponha novas camadas sem problema observável. Em revisão solicitada, não altere comportamento apenas para corrigir a redação. Informe verificações executadas e lacunas sem declarar conformidade absoluta.
+For movements, examine replay, conflicting payloads, stale revisions and atomicity. A double does not prove PostgreSQL transactions. Check whether unrelated invalid fields mask HTTP validation tests. Review transfers against both revisions, paired ledger entries and cross-endpoint idempotency.
+
+Report findings by impact with file/method, trigger, consequence and minimal correction. Recognize justified teaching choices. Do not introduce layers without an observed problem or silently change behavior during a wording review. Report checks and gaps without claiming absolute conformance.

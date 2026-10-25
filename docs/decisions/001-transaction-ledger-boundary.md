@@ -1,6 +1,7 @@
 # ADR-001: Transaction ledger boundary
 
 - Status: Accepted
+- Implemented extension: [ADR-003](003-atomic-wallet-transfers.md) separates ledger transaction_id from global operation_id so one transfer has two entries. History remains outside wallet reconstitution.
 - Date: 2026-10-23
 
 ## Context
@@ -9,7 +10,7 @@ A balance alone cannot explain why points changed, and retrying an HTTP request 
 
 ## Decision
 
-`RewardsWallet` remains the aggregate root responsible for balance and lifecycle rules. `RewardTransaction` is immutable evidence created after the aggregate accepts a credit or debit. It has the client-provided `operationId`, wallet identity, movement type, points, reason, UTC instant and resulting balance.
+`RewardsWallet` remains the aggregate root responsible for balance and lifecycle rules. `RewardTransaction` is immutable evidence created after the aggregate accepts a credit or debit. It has the client-provided `operationId` (shared by both transfer entries), wallet identity, movement type, points, reason, UTC instant and resulting balance.
 
 The repository saves the wallet revision and transaction atomically. `operationId` is globally unique and acts as the idempotency identity. An identical retry returns the persisted result; reusing the ID with different data is a conflict. The ledger is queried separately and never reconstituted as part of the wallet aggregate.
 

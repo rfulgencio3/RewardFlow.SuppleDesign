@@ -2,6 +2,10 @@ using RewardFlow.SuppleDesign.Domain.Entities;
 
 namespace RewardFlow.SuppleDesign.Application.Wallets;
 
+/// <summary>Original transfer outcome, independent of HTTP and subsequent wallet changes.</summary>
+public sealed record RewardTransferResult(Guid OperationId, Guid SourceWalletId, Guid DestinationWalletId,
+    long Points, string Reason, DateTimeOffset OccurredAtUtc, long SourceBalanceAfter, long DestinationBalanceAfter);
+
 /// <summary>Intention-Revealing Interfaces: application result independent of HTTP contracts.</summary>
 /// <remarks>Keeps use cases reusable without making the application layer depend on API DTOs.</remarks>
 public sealed record WalletBalance(long Points);

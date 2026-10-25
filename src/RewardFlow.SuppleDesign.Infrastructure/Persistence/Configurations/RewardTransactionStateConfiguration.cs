@@ -16,7 +16,8 @@ internal sealed class RewardTransactionStateConfiguration : IEntityTypeConfigura
             table.HasCheckConstraint("ck_reward_transactions_type_valid", "type BETWEEN 0 AND 1");
             table.HasCheckConstraint("ck_reward_transactions_reason_not_blank", "length(btrim(reason)) > 0");
         });
-        builder.HasKey(transaction => transaction.OperationId);
+        builder.HasKey(transaction => transaction.TransactionId);
+        builder.Property(transaction => transaction.TransactionId).HasColumnName("transaction_id").ValueGeneratedNever();
         builder.Property(transaction => transaction.OperationId).HasColumnName("operation_id").ValueGeneratedNever();
         builder.Property(transaction => transaction.WalletId).HasColumnName("wallet_id").IsRequired();
         builder.Property(transaction => transaction.Type).HasColumnName("type").HasConversion<int>().IsRequired();
@@ -26,6 +27,9 @@ internal sealed class RewardTransactionStateConfiguration : IEntityTypeConfigura
         builder.Property(transaction => transaction.BalanceAfter).HasColumnName("balance_after").IsRequired();
         builder.HasIndex(transaction => new { transaction.WalletId, transaction.OccurredAtUtc });
         builder.HasOne(transaction => transaction.Wallet).WithMany().HasForeignKey(transaction => transaction.WalletId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(transaction => new { transaction.OperationId, transaction.WalletId }).IsUnique();
+        builder.HasOne<RewardOperationState>().WithMany().HasForeignKey(transaction => transaction.OperationId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

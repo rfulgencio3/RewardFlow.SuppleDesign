@@ -44,21 +44,27 @@ public sealed class RewardsWallet : IRewardsWallet
     }
 
     /// <inheritdoc />
-    public void Credit(RewardPoints earnedPoints)
+    public void Credit(RewardPoints creditedPoints) => Balance = BalanceAfterCredit(creditedPoints);
+
+    /// <summary>Side-Effect-Free Function: validates a credit and returns its balance without changing this wallet.</summary>
+    public RewardPoints BalanceAfterCredit(RewardPoints creditedPoints)
     {
-        ArgumentNullException.ThrowIfNull(earnedPoints);
+        ArgumentNullException.ThrowIfNull(creditedPoints);
         EnsureNotClosed("credit");
-        DomainAssertions.Positive(earnedPoints.Value);
-        Balance = Balance.Add(earnedPoints);
+        DomainAssertions.Positive(creditedPoints.Value);
+        return Balance.Add(creditedPoints);
     }
 
     /// <inheritdoc />
-    public void Debit(RewardPoints redeemedPoints)
+    public void Debit(RewardPoints debitedPoints) => Balance = BalanceAfterDebit(debitedPoints);
+
+    /// <summary>Side-Effect-Free Function: validates a debit and returns its balance without mutation.</summary>
+    public RewardPoints BalanceAfterDebit(RewardPoints debitedPoints)
     {
-        ArgumentNullException.ThrowIfNull(redeemedPoints);
+        ArgumentNullException.ThrowIfNull(debitedPoints);
         EnsureActive("debit");
-        DomainAssertions.Positive(redeemedPoints.Value);
-        Balance = Balance.Subtract(redeemedPoints);
+        DomainAssertions.Positive(debitedPoints.Value);
+        return Balance.Subtract(debitedPoints);
     }
 
     /// <inheritdoc />

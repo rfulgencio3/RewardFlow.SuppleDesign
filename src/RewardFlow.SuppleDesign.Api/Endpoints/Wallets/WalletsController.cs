@@ -12,6 +12,7 @@ public sealed class WalletsController(
     IGetRewardsWallet getWallet,
     ICreditRewardPoints creditPoints,
     IDebitRewardPoints debitPoints,
+    ITransferRewardPoints transferPoints,
     IGetWalletBalance getBalance,
     ICheckWalletAffordability checkAffordability,
     ISuspendRewardsWallet suspendWallet,
@@ -19,6 +20,22 @@ public sealed class WalletsController(
     ICloseRewardsWallet closeWallet,
     IListRewardTransactions listTransactions) : ControllerBase
 {
+    /// <summary>Transfers 1..100 points atomically to another wallet, provided the source can fund the transfer.</summary>
+    [HttpPost("{sourceWalletId:guid}/transfers")]
+    [ProducesResponseType<RewardTransferResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<RewardTransferResponse>> Transfer(Guid sourceWalletId,
+        RewardTransferRequest request, CancellationToken cancellationToken)
+    {
+        var result = await transferPoints.ExecuteAsync(sourceWalletId, request.DestinationWalletId!.Value,
+            request.OperationId!.Value, request.Points!.Value, request.Reason!, cancellationToken);
+        return Ok(new RewardTransferResponse(result.OperationId, result.SourceWalletId, result.DestinationWalletId,
+            result.Points, result.Reason, result.OccurredAtUtc, result.SourceBalanceAfter, result.DestinationBalanceAfter));
+    }
+
     /// <summary>Opens a named rewards wallet with generated identity, active status and zero balance.</summary>
     [HttpPost]
     [ProducesResponseType<OpenWalletResponse>(StatusCodes.Status201Created)]

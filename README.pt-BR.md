@@ -70,7 +70,7 @@ O projeto se concentra nesse fluxo de negócio compacto para manter visíveis a 
 > [!IMPORTANT]
 > **O RewardFlow atende ao propósito de Supple Design dentro do escopo de um exemplo educacional.** O modelo fala a linguagem de recompensas, protege as invariantes onde o estado reside, mantém consultas e cálculos previsíveis e isola as decisões de negócio de HTTP e persistência.
 
-A flexibilidade vem de conceitos explícitos e fronteiras substituíveis. O PostgreSQL é um adaptador secundário, enquanto o EF Core permanece fora dos projetos Domain e Application. O exemplo não adiciona factories, domain services, mensageria ou outros mecanismos sem uma necessidade concreta de modelagem. O [mapeamento dos padrões](#como-o-código-aplica-os-padrões-de-supple-design-de-evans) mostra as evidências no código, e o [orçamento de abstrações](#orçamento-de-abstrações) explica por que cada fronteira existe.
+A flexibilidade vem de conceitos explícitos e fronteiras substituíveis. O PostgreSQL é um adaptador secundário, enquanto o EF Core permanece fora dos projetos Domain e Application. O exemplo não adiciona factories ou mensageria sem necessidade concreta. RewardTransferCalculator é um serviço de domínio justificado pela regra entre duas carteiras. O [mapeamento dos padrões](#como-o-código-aplica-os-padrões-de-supple-design-de-evans) mostra as evidências no código, e o [orçamento de abstrações](#orçamento-de-abstrações) explica por que cada fronteira existe.
 
 ---
 
@@ -112,9 +112,11 @@ O Compose inicia uma imagem fixada do PostgreSQL com as credenciais locais de de
 
 ## Como realizar ações na carteira
 
+Todas as rotas abaixo estão implementadas. A transferência move 1..100 pontos por operação, exige saldo suficiente na origem e confirma ambas as carteiras atomicamente; consulte o [guia de implementação](docs/transfer-plan.md).
+
 Inicie a API e escolha uma destas opções: execute as requisições pelo Swagger em [http://localhost:5180/](http://localhost:5180/), abra [RewardFlow.http](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) em um cliente HTTP compatível ou siga o exemplo em PowerShell.
 
-Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta antes de receber qualquer comando ou consulta.
+Mantenha cada ID de carteira durante seu fluxo; transferências exigem duas carteiras previamente abertas. Preserve operationId somente ao repetir a mesma operação.
 
 | Objetivo | Requisição | Entrada | Resultado esperado |
 | --- | --- | --- | --- |
@@ -122,48 +124,59 @@ Use o mesmo identificador durante todo o fluxo. Uma carteira precisa ser aberta 
 | Consultar a carteira | GET /api/wallets/{id} | Sem body | 200 OK com nome, status, criação e saldo |
 | Creditar pontos ganhos | POST /api/wallets/{id}/credit | `{ "operationId": "uuid", "points": 100, "reason": "Compra" }` | 200 OK com a movimentação e o saldo resultante |
 | Debitar pontos resgatados | POST /api/wallets/{id}/debit | `{ "operationId": "uuid", "points": 40, "reason": "Resgate" }` | 200 OK, se houver saldo suficiente |
+| Transferir pontos | POST /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, 1..100 pontos e reason | 200 com ambos os saldos; origem com saldo suficiente; gravação atômica |
 | Consultar o saldo | GET /api/wallets/{id}/balance | Sem body | 200 OK com os pontos atuais |
 | Verificar capacidade de pagamento | GET /api/wallets/{id}/can-afford?requiredPoints=60 | Pontos inteiros não negativos | 200 OK com canAfford; o saldo não muda |
 | Consultar o extrato | GET /api/wallets/{id}/transactions?page=1&pageSize=20 | Paginação entre 1 e 100 itens | 200 OK em ordem cronológica inversa com `hasNextPage` |
 | Suspender / reativar / encerrar | POST /api/wallets/{id}/{ação} | Sem body | 204 No Content após uma transição válida |
 
 <details>
-<summary><strong>PowerShell: abrir, creditar, debitar e consultar uma carteira</strong></summary>
+<summary><strong>PowerShell: abrir, creditar, debitar, transferir e consultar carteiras</strong></summary>
 
 <br />
 
 ~~~powershell
 $baseUri = 'http://localhost:5180'
-# A API gera a identidade e a devolve com 201 Created.
+# Open the wallet: the API generates its identity and returns it with 201 Created.
 $opened = Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets" `
-    -ContentType 'application/json' -Body '{"name":"Recompensas principais"}'
+    -ContentType 'application/json' -Body '{"name":"Primary rewards"}'
 $walletId = $opened.walletId
 
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId"
 
-# Ganha 100 pontos: 200 OK.
-$creditOperationId = [guid]::NewGuid()
+# Earn 100 points: 200 OK.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/credit" `
     -ContentType 'application/json' `
-    -Body (@{ operationId = $creditOperationId; points = 100; reason = 'Compra' } | ConvertTo-Json)
+    -Body (@{ operationId = [guid]::NewGuid(); points = 100; reason = 'Purchase reward' } | ConvertTo-Json)
 
-# Resgata 40 pontos: 200 OK, restam 60.
+# Redeem 40 points: 200 OK, 60 remain.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
     -ContentType 'application/json' `
-    -Body (@{ operationId = [guid]::NewGuid(); points = 40; reason = 'Resgate' } | ConvertTo-Json)
+    -Body (@{ operationId = [guid]::NewGuid(); points = 40; reason = 'Gift redemption' } | ConvertTo-Json)
 
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/balance"
 
-# Consulta pura: true, sem alterar os 60 pontos.
+# Read-only query: true, and the balance remains 60.
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?requiredPoints=60"
 
-# Extrato paginado das movimentações aceitas.
-Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/transactions?page=1&pageSize=20"
-
-# Rejeitado: 422 Unprocessable Entity; o saldo permanece em 60.
+# Rejected: 422 Unprocessable Entity; balance remains 60.
+# PowerShell reports an HTTP error for this intentional failure.
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
     -ContentType 'application/json' `
-    -Body (@{ operationId = [guid]::NewGuid(); points = 61; reason = 'Exemplo sem saldo' } | ConvertTo-Json)
+    -Body (@{ operationId = [guid]::NewGuid(); points = 61; reason = 'Overdraft example' } | ConvertTo-Json)
+
+# Open the destination, then transfer 40 points: source=20, destination=40.
+$destination = Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets" `
+    -ContentType 'application/json' -Body '{"name":"Transfer destination"}'
+$transferOperationId = [guid]::NewGuid()
+$transferBody = @{ operationId = $transferOperationId; destinationWalletId = $destination.walletId; points = 40; reason = 'Reward points transfer' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/transfers" `
+    -ContentType 'application/json' -Body $transferBody
+
+# An identical retry returns the original result without moving more points.
+Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/transfers" `
+    -ContentType 'application/json' -Body $transferBody
+
 ~~~
 
 </details>
@@ -175,9 +188,13 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 | Reward Points | Unidades inteiras e não negativas, ganhas e resgatadas por um membro; representadas por RewardPoints. |
 | Rewards Wallet | Agregado que mantém os pontos disponíveis de um membro identificado. |
 | Open | Criar uma carteira identificada com zero pontos. |
-| Credit | Adicionar pontos ganhos a uma carteira existente. |
-| Debit | Remover pontos resgatados de uma carteira existente. |
+| Credit | Aumentar pontos disponíveis. Crédito comum registra pontos ganhos; transferência recebida também gera um lançamento de crédito. |
+| Debit | Reduzir pontos disponíveis. Débito comum registra resgate; transferência enviada também gera um lançamento de débito. |
 | Balance | Pontos de recompensa atualmente disponíveis. |
+| Transfer | Move atomicamente 1..100 pontos entre carteiras distintas, com saldo suficiente na origem e dois lançamentos vinculados; não cria nem destrói pontos. |
+| Source Wallet / Destination Wallet | Carteira que fornece / recebe os pontos transferidos. |
+| Reward Operation | Crédito, débito ou transferência aceito, identificado globalmente pelo operationId do cliente. |
+| Ledger Entry | Evidência imutável por carteira: um lançamento para movimento comum; dois vinculados para transferência. transactionId é interno; operationId identifica a operação de negócio. |
 | Can Afford | Verificar se o saldo cobre os pontos necessários sem alterar o estado. |
 | Suspend | Bloquear temporariamente resgates, mantendo o recebimento de pontos ganhos. |
 | Reactivate | Devolver uma carteira suspensa ao uso ativo. |
@@ -191,35 +208,37 @@ RewardPoints usa long e aceita valores de zero a long.MaxValue. Construção neg
 
 ## Como uma requisição percorre o projeto
 
+O diagrama abaixo representa o crédito atual. A sequência da transferência entre duas carteiras, incluindo rollback, está no [plano](docs/transfer-plan.md#sequence-and-atomicity).
+
 A operação de crédito mostra como os adaptadores e o núcleo colaboram sem transferir regras de negócio para o controller ou para o repositório:
 
 ~~~mermaid
 sequenceDiagram
-    actor Cliente
+    actor Client
     participant API as WalletsController
-    participant CasoDeUso as ICreditRewardPoints
-    participant Repositorio as IRewardsWalletRepository
-    participant Carteira as RewardsWallet
-    participant Pontos as RewardPoints
+    participant UseCase as ICreditRewardPoints
+    participant Repository as IRewardsWalletRepository
+    participant Wallet as RewardsWallet
+    participant Points as RewardPoints
 
-    Cliente->>API: POST credit (operationId, points, reason)
-    API->>CasoDeUso: ExecuteAsync(id, operationId, points, reason)
-    CasoDeUso->>Repositorio: FindTransactionAsync(operationId)
-    CasoDeUso->>Repositorio: FindAsync(id)
-    Repositorio-->>CasoDeUso: WalletSnapshot desacoplado
-    CasoDeUso->>Carteira: Credit(earnedPoints)
-    Carteira->>Pontos: Add(earnedPoints)
-    Pontos-->>Carteira: novo RewardPoints
-    CasoDeUso->>Repositorio: TrySaveMovementAsync(wallet, transaction, revision)
-    Repositorio-->>CasoDeUso: saldo e movimentação salvos atomicamente
-    CasoDeUso-->>API: RewardMovement
-    API-->>Cliente: 200 RewardMovementResponse
+    Client->>API: POST credit (operationId, points, reason)
+    API->>UseCase: ExecuteAsync(id, operationId, points, reason)
+    UseCase->>Repository: FindOperationKindAsync / FindTransactionAsync(operationId)
+    UseCase->>Repository: FindAsync(id)
+    Repository-->>UseCase: detached WalletSnapshot
+    UseCase->>Wallet: Credit(earnedPoints)
+    Wallet->>Points: Add(earnedPoints)
+    Points-->>Wallet: new RewardPoints
+    UseCase->>Repository: TrySaveMovementAsync(wallet, transaction, revision)
+    Repository-->>UseCase: balance and movement saved atomically
+    UseCase-->>API: RewardMovement
+    API-->>Client: 200 RewardMovementResponse
 ~~~
 
 1. WalletsController valida e traduz a requisição HTTP, depois chama a porta de entrada da aplicação.
 2. CreditRewardPoints coordena o caso de uso e pede à porta de repositório um snapshot desacoplado.
 3. RewardsWallet.Credit expressa a mudança na linguagem do domínio e delega a aritmética imutável a RewardPoints.Add.
-4. A aplicação cria uma RewardTransaction e salva saldo e registro usando a revisão carregada na mesma transação do banco.
+4. A aplicação cria uma RewardTransaction e salva saldo e registro usando a revisão carregada na mesma transação do banco. Transferências exigem as duas revisões e confirmam ambas as carteiras e os dois lançamentos juntos; revisão obsoleta retorna 409 e reverte tudo.
 5. Se o operationId já existir com os mesmos dados, o resultado original é devolvido sem alterar o saldo novamente.
 6. O caso de uso retorna um resultado de aplicação, convertido pelo controller em um DTO de resposta.
 
@@ -227,50 +246,71 @@ Débito segue o mesmo fluxo de comando. Saldo, capacidade de pagamento e extrato
 
 ## Arquitetura: Clean Architecture e Portas Hexagonais
 
+O diagrama abaixo mostra o sistema implementado. A [arquitetura da transferência](docs/transfer-plan.md#architecture) acrescenta cálculo de domínio e uma capacidade específica de persistência atômica, sem novas camadas arquiteturais.
+
 ~~~mermaid
 flowchart LR
-    Client([Cliente HTTP<br/>Swagger / Testes])
+    Client([HTTP Client<br/>Swagger / Integration Tests])
 
-    subgraph Api["API · Adaptador Primário"]
-        Controller["WalletsController<br/>Rotas · Validação · Status"]
-        DTOs["DTOs de requisição e resposta<br/>Problem Details"]
+    subgraph Api["API · Primary Adapter"]
+        direction TB
+        Controller["WalletsController<br/>Routes · Validation · Status Codes"]
+        DTOs["Request / Response DTOs<br/>Problem Details"]
         Composition["Program.cs<br/>Composition Root"]
         Controller --- DTOs
     end
 
-    subgraph Application["Application · Casos de Uso"]
-        InboundPorts["Portas de entrada<br/>Open · Credit · Debit<br/>Balance · Affordability"]
-        UseCases["Implementações dos casos de uso"]
+    subgraph Application["Application · Use Cases"]
+        direction TB
+        InboundPorts["Inbound Ports<br/>IOpenRewardsWallet<br/>ICreditRewardPoints<br/>ITransferRewardPoints<br/>IDebitRewardPoints<br/>IGetWalletBalance<br/>ICheckWalletAffordability"]
+        UseCases["Use Case Implementations<br/>Transfer - Open · Credit · Debit · Balance · Affordability"]
         InboundPorts --> UseCases
     end
 
-    subgraph Domain["Domain · Núcleo de Negócio"]
+    subgraph Domain["Domain · Business Core"]
+        direction TB
         WalletPort["IRewardsWallet<br/>Credit · Debit · CanAfford"]
-        Wallet["RewardsWallet<br/>Aggregate Root"]
-        Points["RewardPoints + WalletName<br/>Value Objects imutáveis"]
+        Wallet["RewardsWallet<br/>Aggregate"]
+        Points["RewardPoints + WalletName + TransferAmount<br/>Immutable Value Objects"]
         Rules["DomainAssertions<br/>DomainException"]
-        RepositoryPort["IRewardsWalletRepository<br/>Porta de saída"]
+        RepositoryPort["IRewardsWalletRepository<br/>Outbound Port"]
+
+        Calculator["RewardTransferCalculator<br/>Two-wallet calculation"]
+        UseCases --> Calculator
+        Calculator --> Wallet
         WalletPort --> Wallet
-        Wallet -->|delega aritmética| Points
-        Wallet -->|protege invariantes| Rules
-        Points -->|valida valores| Rules
+        Wallet -->|delegates arithmetic| Points
+        Wallet -->|enforces invariants| Rules
+        Points -->|validates values| Rules
     end
 
-    subgraph Infrastructure["Infrastructure · Adaptador Secundário"]
-        Repository["PostgresRewardsWalletRepository<br/>Snapshots · Concorrência otimista"]
-        DbContext["RewardFlowDbContext<br/>EF Core · Migrations"]
+    subgraph Infrastructure["Infrastructure · Secondary Adapter"]
+        Repository["PostgresRewardsWalletRepository<br/>Detached Snapshots<br/>Optimistic Concurrency"]
+        DbContext["RewardFlowDbContext<br/>EF Core Mapping · Migrations"]
         Repository --> DbContext
     end
 
-    Database[(PostgreSQL 17<br/>Volume Docker)]
-    Client -->|HTTP| Controller
-    Controller -->|chama porta| InboundPorts
-    UseCases -->|invoca comportamento| WalletPort
-    UseCases -->|carrega e salva| RepositoryPort
-    Repository -.->|implementa| RepositoryPort
+    Database[(PostgreSQL 17<br/>Docker Volume)]
+
+    Client -->|HTTP request| Controller
+    Controller -->|calls inbound port| InboundPorts
+    UseCases -->|invokes domain behavior| WalletPort
+    UseCases -->|loads / saves| RepositoryPort
+    Repository -.->|implements| RepositoryPort
     DbContext -->|Npgsql| Database
-    Composition -.->|conecta portas e adaptadores| InboundPorts
+    Composition -.->|binds ports to adapters| InboundPorts
     Composition -.-> Repository
+
+    classDef external fill:#f5f5f5,stroke:#616161,color:#212121
+    classDef adapter fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+    classDef application fill:#fff3e0,stroke:#ef6c00,color:#e65100
+    classDef domain fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
+    classDef port fill:#f3e5f5,stroke:#7b1fa2,color:#4a148c
+    class Client,Database external
+    class Controller,DTOs,Composition,Repository,DbContext adapter
+    class UseCases application
+    class Wallet,Points,Rules,Calculator domain
+    class InboundPorts,WalletPort,RepositoryPort port
 ~~~
 
 As setas contínuas mostram o fluxo das requisições e a colaboração no domínio. As tracejadas mostram a composição dos adaptadores: Program.cs escolhe as implementações e Infrastructure implementa a porta de repositório pertencente ao Domain.
@@ -279,70 +319,101 @@ Domain não possui referências a outros projetos ou pacotes. Application e Infr
 
 ## Estrutura do projeto
 
+Os arquivos de transferência e suas verificações estão no [guia de implementação](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria).
+
 ~~~text
 RewardFlow.SuppleDesign/
 ├── RewardFlow.SuppleDesign.slnx
-├── RewardFlow.SuppleDesign.slnLaunch              # Perfil de inicialização compartilhado opcional
-├── Directory.Build.props                         # Configurações compartilhadas do .NET 8
-├── global.json                                   # Faixa reproduzível do SDK
-├── compose.yaml                                  # PostgreSQL 17 e volume local
-├── dotnet-tools.json                             # Versão reproduzível do dotnet-ef
-├── docs/decisions/                               # Registros de decisões arquiteturais
+├── RewardFlow.SuppleDesign.slnLaunch              # Optional shared startup profile
+├── Directory.Build.props                         # Shared .NET 8 build settings
+├── global.json                                   # Reproducible SDK feature band
+├── compose.yaml                                  # Local PostgreSQL 17 container and volume
+├── dotnet-tools.json                             # Reproducible EF Core CLI version
+├── docs/decisions/                               # Architectural decision records
 ├── README.md
-├── README.pt-BR.md
 │
-├── src/
-│   ├── RewardFlow.SuppleDesign.Domain/
+├── src/                                           # Production code
+│   ├── RewardFlow.SuppleDesign.Domain/            # Business model; no external dependencies
 │   │   ├── Entities/
-│   │   │   ├── RewardsWallet.cs                  # Aggregate Root e ciclo de vida
+│   │   │   ├── RewardsWallet.cs                   # Aggregate root and lifecycle rules
 │   │   │   ├── RewardsWalletStatus.cs
-│   │   │   └── RewardTransaction.cs              # Movimentação imutável identificada
+│   │   │   ├── RewardTransfer.cs                  # Original paired-operation result
+│   │   │   └── RewardTransaction.cs               # Identified immutable movement
+│   │   ├── Services/RewardTransferCalculator.cs     # Calculation without mutation
 │   │   ├── ValueObjects/
-│   │   │   ├── RewardPoints.cs                   # Aritmética imutável
-│   │   │   ├── WalletName.cs                     # Nome normalizado
-│   │   │   └── RewardReason.cs                   # Motivo normalizado
-│   │   ├── Exceptions/DomainException.cs
+│   │   │   ├── TransferAmount.cs                  # Transfer-specific 1..100 rule
+│   │   │   ├── RewardPoints.cs                    # Immutable arithmetic value object
+│   │   │   ├── WalletName.cs                      # Normalized name value object
+│   │   │   └── RewardReason.cs                    # Normalized movement reason
+│   │   ├── Exceptions/
+│   │   │   └── DomainException.cs
 │   │   ├── Ports/
-│   │   │   ├── IRewardsWallet.cs                 # Contrato de comportamento
-│   │   │   └── IRewardsWalletRepository.cs       # Porta de persistência
-│   │   └── DomainAssertions.cs                   # Pré-condições e invariantes
-│   ├── RewardFlow.SuppleDesign.Application/
-│   │   └── Wallets/
-│   │       ├── Common/
-│   │       ├── OpenWallet/
-│   │       ├── CreditPoints/
-│   │       ├── DebitPoints/
-│   │       ├── ChangeStatus/
-│   │       ├── GetWallet/
-│   │       ├── GetBalance/
-│   │       └── CheckAffordability/
-│   ├── RewardFlow.SuppleDesign.Infrastructure/
+│   │   │   ├── IRewardsWallet.cs                  # Domain behavior contract
+│   │   │   └── IRewardsWalletRepository.cs        # Outbound persistence port
+│   │   ├── DomainAssertions.cs                    # Preconditions and invariants
+│   │   └── RewardFlow.SuppleDesign.Domain.csproj
+│   │
+│   ├── RewardFlow.SuppleDesign.Application/       # Use-case orchestration
+│   │   ├── Wallets/
+│   │   │   ├── Common/                            # Results, exceptions and persistence coordination
+│   │   │   ├── OpenWallet/
+│   │   │   ├── TransferPoints/TransferRewardPoints.cs
+│   │   │   ├── CreditPoints/
+│   │   │   ├── DebitPoints/
+│   │   │   ├── ChangeStatus/
+│   │   │   ├── GetWallet/
+│   │   │   ├── GetBalance/
+│   │   │   └── CheckAffordability/
+│   │   └── RewardFlow.SuppleDesign.Application.csproj
+│   │
+│   ├── RewardFlow.SuppleDesign.Infrastructure/    # Secondary adapters
 │   │   ├── Persistence/
-│   │   │   ├── Configurations/                   # Mapeamento Fluent do EF Core
-│   │   │   ├── Migrations/                       # Esquema PostgreSQL versionado
-│   │   │   ├── Models/                           # Registros exclusivos da persistência
+│   │   │   ├── Configurations/                    # Fluent EF Core mapping
+│   │   │   ├── Migrations/                        # Versioned PostgreSQL schema
+│   │   │   ├── Models/                            # Persistence-only records
 │   │   │   ├── RewardFlowDbContext.cs
-│   │   │   └── RewardFlowDbContextFactory.cs
-│   │   ├── Repositories/PostgresRewardsWalletRepository.cs
-│   │   └── DependencyInjection.cs
-│   └── RewardFlow.SuppleDesign.Api/
-│       ├── Endpoints/Wallets/WalletsController.cs
-│       ├── DTOs/Wallets/
-│       │   ├── WalletContracts.cs
-│       │   └── WalletContractExamples.cs
-│       ├── Errors/ApiExceptionHandler.cs
-│       ├── Program.cs
-│       └── RewardFlow.http
-└── test/
+│   │   │   └── RewardFlowDbContextFactory.cs      # Migration tooling
+│   │   ├── Repositories/
+│   │   │   └── PostgresRewardsWalletRepository.cs
+│   │   ├── DependencyInjection.cs                 # Adapter registration and migration startup
+│   │   └── RewardFlow.SuppleDesign.Infrastructure.csproj
+│   │
+│   └── RewardFlow.SuppleDesign.Api/               # HTTP primary adapter
+│       ├── Endpoints/
+│       │   └── Wallets/
+│       │       └── WalletsController.cs
+│       ├── DTOs/
+│       │   └── Wallets/
+│       │       ├── WalletContracts.cs
+│       │       └── WalletContractExamples.cs
+│       ├── Errors/
+│       │   └── ApiExceptionHandler.cs
+│       ├── Properties/
+│       │   └── launchSettings.json
+│       ├── Program.cs                             # Composition root
+│       ├── appsettings.json                       # Connection string and runtime configuration
+│       ├── RewardFlow.http                        # Executable HTTP examples
+│       └── RewardFlow.SuppleDesign.Api.csproj
+│
+└── test/                                          # Executable specifications
     └── RewardFlow.SuppleDesign.Tests/
-        ├── TestDoubles/InMemoryRewardsWalletRepository.cs
+        ├── TestDoubles/
+        │   └── InMemoryRewardsWalletRepository.cs
+        ├── TransferDomainTests.cs
+        ├── TransferApplicationTests.cs
+        ├── TransferPostgresTests.cs
+        ├── TransferApiTests.cs
+        ├── TransferMigrationTests.cs
         ├── DomainTests.cs
         ├── ApplicationTests.cs
         ├── PostgresRepositoryTests.cs
-        └── WalletApiTests.cs
+        ├── WalletApiTests.cs
+        └── RewardFlow.SuppleDesign.Tests.csproj
 ~~~
 
 ## Blocos de construção de Evans e o RewardFlow
+
+A transferência usa um serviço de domínio justificado pelo cálculo entre duas carteiras, separado da coordenação da aplicação. Consulte o [ADR-003](docs/decisions/003-atomic-wallet-transfers.md).
 
 A figura do livro apresenta os blocos mais amplos de **Model-Driven Design** de Evans. Ela complementa o Capítulo 10, mas não é um diagrama dos padrões de Supple Design: Entities, Value Objects, Aggregates, Repositories, Services e Factories são blocos táticos; Intention-Revealing Interfaces, Side-Effect-Free Functions, Assertions, Conceptual Contours, Standalone Classes e Closure of Operations tornam esse modelo flexível.
 
@@ -360,25 +431,26 @@ flowchart LR
         U["Smart UI"]
     end
 
-    subgraph RewardFlow["RewardFlow · Implementação concreta"]
+    subgraph RewardFlow["RewardFlow · Concrete Implementation"]
         direction TB
         Wallet["RewardsWallet<br/>Entity + Aggregate Root"]
-        Points["RewardPoints<br/>Value Object imutável"]
-        Repository["IRewardsWalletRepository<br/>+ Adaptador PostgreSQL"]
-        UseCases["Casos de uso da Application<br/>Open · Credit · Debit · Consultas · Ciclo de vida"]
-        Construction["Construtores<br/>Criação simples; sem Factory"]
+        Points["RewardPoints<br/>Immutable Value Object"]
+        Repository["IRewardsWalletRepository<br/>+ PostgreSQL Adapter"]
+        Calculator["RewardTransferCalculator<br/>Domain service"]
+        UseCases["Application Use Cases<br/>Open · Credit · Debit · Queries · Lifecycle"]
+        Construction["Constructors<br/>Simple creation; no Factory needed"]
         Layers["Domain · Application<br/>Infrastructure · API"]
-        Controllers["Controllers enxutos<br/>Somente aspectos HTTP"]
+        Controllers["Thin Controllers<br/>HTTP concerns only"]
     end
 
     E --> Wallet
     A --> Wallet
     V --> Points
     R --> Repository
-    S -.->|coordenação da aplicação| UseCases
-    F -.->|a criação ainda é simples| Construction
+    S --> Calculator
+    F -.->|creation is still simple| Construction
     L --> Layers
-    U -.->|alternativa evitada| Controllers
+    U -.->|alternative deliberately avoided| Controllers
 
     classDef evans fill:#f5f5f5,stroke:#616161,color:#212121
     classDef domain fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
@@ -396,7 +468,7 @@ flowchart LR
 | Value Object | RewardPoints e WalletName | Não têm identidade, comparam por valor e protegem suas próprias regras. |
 | Aggregate | RewardsWallet | É a fronteira de consistência para identidade e saldo. |
 | Repository | IRewardsWalletRepository e adaptador PostgreSQL | A porta pertence ao domínio e a tecnologia fica na infraestrutura. |
-| Service | Casos de uso da Application | Coordenam fluxo e persistência; as regras permanecem no domínio. |
+| Service | RewardTransferCalculator | Relaciona duas carteiras usando consultas de saldo sem mutação; os casos de uso coordenam I/O separadamente. |
 | Factory | Construtores | A criação é simples; uma Factory não protegeria uma nova invariante. |
 | Layered Architecture | Quatro projetos | Domain isolado, Application coordenando e Infrastructure/API como adaptadores. |
 | Smart UI | Ausente deliberadamente | Controllers traduzem HTTP e não contêm regras de recompensa. |
@@ -417,6 +489,8 @@ Os diagramas Mermaid são interpretações específicas deste projeto, não repr
 Por exemplo, new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new RewardPoints(40)) produz 85 pontos sem alterar nenhum operando. RewardsWallet.Credit delega essa aritmética e só substitui o saldo depois de uma validação bem-sucedida.
 
 ## Orçamento de abstrações
+
+As abstrações de transferência têm responsabilidades concretas: `TransferAmount` protege 1..100; `RewardTransferCalculator` calcula os dois resultados sem mutação; a evidência de transferência registra a operação pareada. O registro global de operações separa idempotência da identidade dos lançamentos. A justificativa e as alternativas estão no [plano](docs/transfer-plan.md); estão implementadas.
 
 | Abstração | Por que existe | Quando reconsiderar |
 | --- | --- | --- |
@@ -441,12 +515,15 @@ Os registros preservam o raciocínio para que o leitor diferencie uma fronteira 
 
 ## Contrato HTTP e erros
 
+A tabela descreve rotas implementadas. O contrato de `POST /api/wallets/{sourceWalletId}/transfers`, seus exemplos e erros estão no [plano](docs/transfer-plan.md#http-contract). O endpoint está disponível.
+
 | Método | Rota | Body | Sucesso |
 | --- | --- | --- | --- |
 | POST | /api/wallets | {"name":"Recompensas principais"} | 201, ID gerado e localização da carteira |
 | GET | /api/wallets/{id} | nenhum | 200 e dados da carteira |
 | POST | /api/wallets/{id}/credit | operationId, pontos e motivo | 200 e movimentação aceita |
 | POST | /api/wallets/{id}/debit | operationId, pontos e motivo | 200 e movimentação aceita |
+| POST | `/api/wallets/{sourceWalletId}/transfers` | operationId, destinationWalletId, points (1..100), reason | 200 com resultado original |
 | GET | /api/wallets/{id}/transactions?page=1&pageSize=20 | Sem body | 200 e página do extrato |
 | GET | /api/wallets/{id}/balance | nenhum | 200 e saldo atual |
 | GET | /api/wallets/{id}/can-afford?requiredPoints=60 | nenhum | 200 e resultado da consulta |
@@ -485,31 +562,54 @@ A connection string é lida de ConnectionStrings:RewardFlow. Em outros ambientes
 
 ### Modelo de dados (DER)
 
+O esquema implementado contém `reward_operations`, `reward_transfers` e `transaction_id` independente no extrato, permitindo dois lançamentos para uma operação sem perder os IDs antigos.
+
 ~~~mermaid
 erDiagram
     REWARDS_WALLETS {
-        uuid id PK "identidade do agregado"
-        varchar name "nome normalizado"
-        integer status "ativa, suspensa ou encerrada"
-        timestamptz created_at_utc "instante de abertura"
-        bigint points "saldo não negativo"
-        bigint revision "concorrência otimista"
+        uuid id PK
+        varchar name
+        integer status
+        timestamptz created_at_utc
+        bigint points
+        bigint revision
+    }
+    REWARD_OPERATIONS {
+        uuid operation_id PK
+        integer kind "Credit, Debit, Transfer"
+    }
+    REWARD_TRANSFERS {
+        uuid operation_id PK,FK
+        uuid source_wallet_id FK
+        uuid destination_wallet_id FK
+        bigint points "1..100"
+        varchar reason "1..200 normalized"
+        timestamptz occurred_at_utc
+        bigint source_balance_after
+        bigint destination_balance_after
     }
     REWARD_TRANSACTIONS {
-        uuid operation_id PK "identidade idempotente"
-        uuid wallet_id FK "carteira movimentada"
-        integer type "crédito ou débito"
-        bigint points "quantidade positiva"
-        varchar reason "motivo do negócio"
-        timestamptz occurred_at_utc "instante aceito"
-        bigint balance_after "saldo resultante"
+        uuid transaction_id PK
+        uuid operation_id FK
+        uuid wallet_id FK
+        integer type "Credit or Debit"
+        bigint points
+        varchar reason
+        timestamptz occurred_at_utc
+        bigint balance_after
     }
-    REWARDS_WALLETS ||--o{ REWARD_TRANSACTIONS : registra
+    REWARD_OPERATIONS ||--o| REWARD_TRANSFERS : identifies
+    REWARD_OPERATIONS ||--|{ REWARD_TRANSACTIONS : records
+    REWARDS_WALLETS ||--o{ REWARD_TRANSACTIONS : has
+    REWARDS_WALLETS ||--o{ REWARD_TRANSFERS : sends
+    REWARDS_WALLETS ||--o{ REWARD_TRANSFERS : receives
 ~~~
 
 WalletName, RewardReason e RewardPoints são armazenados de forma achatada. `revision` pertence à coordenação da persistência, não ao agregado. Constraints rejeitam nomes e motivos vazios, status e tipos desconhecidos, pontos inválidos, saldos negativos e revisões negativas.
 
 ### Migrations
+
+**Implementada:** `20261024215631_AddWalletTransfers`. O [plano de migration](docs/transfer-plan.md#migration-addwallettransfers) detalha backfill, chaves/FKs, constraints, compatibilidade dos endpoints existentes, testes de upgrade, restrições de rollback e rollout. A migration, seu designer e o snapshot atualizado estão versionados. O backfill preserva IDs antigos e o downgrade é bloqueado quando existem transferências. Pare escritores da versão anterior antes de atualizar.
 
 As migrations estão versionadas em Infrastructure/Persistence/Migrations, incluindo as evoluções de perfil, ciclo de vida e extrato. Antes de ativar o middleware, Program.cs chama ApplyRewardFlowMigrationsAsync, que executa Database.MigrateAsync. Quando o PostgreSQL não está acessível, a inicialização informa diretamente o comando `docker compose up -d --wait`.
 
@@ -535,6 +635,10 @@ docker compose down --volumes
 
 ## Testes
 
+A suíte Release passa 70 testes, incluindo [verificações de transferência](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria): domínio, HTTP, revisões de duas carteiras, concorrência, rollback com falhas injetadas e preservação de histórico na migration. Isso não implica cobertura de todos os entrelaçamentos possíveis.
+
+O teste de migration cria e remove seu próprio banco temporário; o usuário configurado precisa de CREATEDB, disponível no usuário do Compose local.
+
 A suíte xUnit cobre:
 
 - Igualdade por valor, aritmética imutável, limites, saldo insuficiente e overflow.
@@ -559,7 +663,6 @@ Cada evolução futura deve introduzir uma pressão concreta de modelagem e torn
 | --- | --- | --- |
 | Expiração de pontos | Como pontos ganhos em momentos diferentes devem expirar sem quebrar as regras de resgate? | Criar conceitos temporais explícitos, Intention-Revealing Interfaces e Assertions, evitando comparações de datas espalhadas pelos casos de uso. |
 | Política configurável de acúmulo | Como valor da compra, campanha e categoria do membro são convertidos em pontos? | Modelar o cálculo como uma Standalone Class com uma Side-Effect-Free Function, entradas explícitas e resultado previsível. |
-| Transferência entre carteiras | Quais regras e qual fronteira de consistência governam uma movimentação entre duas carteiras? | Avaliar se o comportamento pertence a um Aggregate ou exige um Domain Service, a partir do modelo e não apenas do nome do padrão. |
 | Exemplos algébricos e testes baseados em propriedades | Quais propriedades sempre devem valer nas operações com pontos? | Demonstrar Closure of Operations, imutabilidade e invariantes como identidade aditiva e rejeição de resultados negativos. |
 
 Cada incremento deve começar com exemplos, vocabulário e testes que expressem a nova necessidade. Somente depois disso o modelo deve mudar. O README e o orçamento de abstrações também devem registrar a decisão, as alternativas consideradas e a condição que justifica cada novo tipo ou fronteira.
@@ -597,7 +700,7 @@ Este projeto foi inspirado por *Domain-Driven Design: Tackling Complexity in the
 
 ## Documentação, skills e guardrails
 
-O propósito principal é implementar os padrões de Supple Design de Eric Evans de forma objetiva e educacional. Consulte o [índice da documentação](docs/README.md), o [guia dos padrões](docs/supple-design.md), a [análise do projeto](docs/project-analysis.md) e os [guardrails](docs/guardrails.md). O exemplo demonstra seis padrões; não reivindica cobertura integral do capítulo 10, incluindo design declarativo. Intention-Revealing Interfaces trata de contratos públicos que comunicam intenção e não exige uma interface C# para cada tipo.
+O propósito principal é implementar os padrões de Supple Design de Eric Evans de forma objetiva e educacional. A [constitution](docs/constitution.md) define inglês como idioma canônico dos documentos, planos, ADRs, skills, diagramas, código e comentários; este README é a exceção explícita como tradução para português. Consulte o [índice da documentação](docs/README.md), o [guia dos padrões](docs/supple-design.md), a [análise do projeto](docs/project-analysis.md) e os [guardrails](docs/guardrails.md). O exemplo demonstra seis padrões; não reivindica cobertura integral do capítulo 10, incluindo design declarativo. Intention-Revealing Interfaces trata de contratos públicos que comunicam intenção e não exige uma interface C# para cada tipo.
 
 | Recurso | Papel |
 | --- | --- |

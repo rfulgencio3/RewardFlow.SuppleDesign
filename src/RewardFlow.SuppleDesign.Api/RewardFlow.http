@@ -1,5 +1,7 @@
 @host = http://localhost:5180
 @wallet = replace-with-the-id-returned-by-open
+@destination = replace-with-the-id-returned-by-destination-open
+@transferOperation = replace-with-a-new-uuid-and-retain-it-only-for-retries
 
 ### Open a wallet; copy walletId from the 201 response into @wallet
 POST {{host}}/api/wallets
@@ -36,6 +38,24 @@ POST {{host}}/api/wallets/{{wallet}}/debit
 Content-Type: application/json
 
 { "operationId": "33333333-3333-4333-8333-333333333333", "points": 61, "reason": "Overspend example" }
+
+### Open the destination; copy walletId into @destination
+POST {{host}}/api/wallets
+Content-Type: application/json
+
+{ "name": "Transfer destination" }
+
+### Transfer 40 points before suspending or closing the source (20 remain from the preceding flow)
+POST {{host}}/api/wallets/{{wallet}}/transfers
+Content-Type: application/json
+
+{ "operationId": "{{transferOperation}}", "destinationWalletId": "{{destination}}", "points": 40, "reason": "Reward points transfer" }
+
+### Inspect the destination balance and its credit entry
+GET {{host}}/api/wallets/{{destination}}/balance
+
+### Inspect destination ledger
+GET {{host}}/api/wallets/{{destination}}/transactions?page=1&pageSize=20
 
 ### Suspend redemptions; credits remain accepted
 POST {{host}}/api/wallets/{{wallet}}/suspend
