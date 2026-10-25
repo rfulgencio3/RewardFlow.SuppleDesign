@@ -13,6 +13,6 @@ Express the rule with inputs, expected results and a rejected case. Identify inv
 
 Make the smallest change exposing the concept. Justify new abstractions with a concrete need and learning cost. Do not add frameworks merely to expand the demonstration.
 
-Test behavior at the layer deciding the rule. Movement changes require state preservation on rejection. Persistence changes require PostgreSQL evidence for revisions, idempotency and atomicity. Use explicit clocks. For transfers, consult docs/transfer-plan.md and ADR-003; they remain proposals until implemented.
+Test behavior at the layer deciding the rule. Movement changes require state preservation on rejection. Persistence changes require PostgreSQL evidence for revisions, idempotency and atomicity. Use explicit clocks. For transfers, consult docs/transfer-plan.md and ADR-003; they describe the implemented feature and its verification.
 
 Update affected comments and shared README claims. Add an ADR for decisions spanning types. Report before/after behavior, educational benefit, checks and remaining limits.

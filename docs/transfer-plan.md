@@ -1,12 +1,12 @@
-# Wallet transfer implementation plan
+# Wallet transfers: implementation and verification
 
-Status: **proposed, not implemented**. This delivery covers planning/documentation only. The endpoint, types, transfer tests and migration described here do not exist yet. Follow the English-language [constitution](constitution.md).
+Status: **implemented**. This document records the original design, delivered endpoint, migration and acceptance evidence. Follow the English-language [constitution](constitution.md).
 
 ## Rules and examples
 
-Interpret the requested limit as **100 points per transfer**, inclusive, with no daily/cumulative quota or fee. These are explicit planning assumptions. Source and destination must exist, have nonempty IDs and be distinct. Transfer whole points from 1 through 100. Source must have sufficient balance; spending exactly its balance is valid.
+Interpret the requested limit as **100 points per transfer**, inclusive, with no daily/cumulative quota or fee. This is the implemented per-operation policy. Source and destination must exist, have nonempty IDs and be distinct. Transfer whole points from 1 through 100. Source must have sufficient balance; spending exactly its balance is valid.
 
-Preserve current lifecycle semantics: source must be active; destination may be active or suspended because suspension permits credits. A closed destination rejects new transfers. Destination overflow rejects everything. This is a local policy proposal, not an Evans requirement.
+Preserve current lifecycle semantics: source must be active; destination may be active or suspended because suspension permits credits. A closed destination rejects new transfers. Destination overflow rejects everything. This is a local policy, not an Evans requirement.
 
 | Initial state | Request | Outcome |
 | --- | --- | --- |
@@ -22,9 +22,11 @@ Preserve current lifecycle semantics: source must be active; destination may be 
 
 Conservation: sourceAfter = sourceBefore - points; destinationAfter = destinationBefore + points. Tests must avoid overflowing a sum of two long values: compare deltas or use BigInteger.
 
+Terminology follows the canonical README glossary: a transfer is one reward operation with two ledger entries, not two independent credits/debits. Their directions describe wallet balance changes; the transfer conserves points.
+
 ## Domain model and Supple Design
 
-| Proposed concept | Responsibility and justification |
+| Implemented concept | Responsibility and justification |
 | --- | --- |
 | TransferAmount | Immutable value containing RewardPoints; enforces 1..100 with MaximumPoints=100. Ordinary RewardPoints/credit/debit remain valid above 100 |
 | RewardsWallet.BalanceAfterDebit / BalanceAfterCredit | Domain queries validate lifecycle/quantity and compute a new balance. Existing Debit/Credit reuse them to avoid rule duplication |
@@ -37,7 +39,7 @@ A domain service is justified by a rule relating **two wallets**. It does not re
 
 Intention-Revealing Interfaces appears in explicit transfer and balance-preview vocabulary. Assertions live with the owning values/methods. Side-Effect-Free Functions appears in calculation over loaded state, without mutation, I/O or an internal clock. Conceptual Contours separates transferable quantity, wallets and evidence. TransferAmount is a small Standalone Class. Closure of Operations remains in RewardPoints.Add/Subtract: do **not** add TransferAmount.Add, because two valid amounts may exceed 100. These are local applications of the patterns, not a prescribed implementation from the book.
 
-## Proposed HTTP contract
+## HTTP contract
 
 `POST /api/wallets/{sourceWalletId:guid}/transfers`
 
@@ -65,7 +67,7 @@ Return 200 OK for first acceptance and identical replay, following current movem
 }
 ```
 
-| HTTP | Condition/planned code |
+| HTTP | Condition/code |
 | --- | --- |
 | 400 | Invalid JSON/fields; omitted, fractional or out-of-range points; invalid reason; HTTP validation errors |
 | 404 | Malformed route GUID, or missing source/destination; wallet_not_found for an actual missing wallet |
@@ -87,7 +89,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     Client->>API: POST transfer with operationId
     API->>App: ExecuteAsync(source, destination, amount, reason)
-    App->>Store: FindOperationAsync(operationId)
+    App->>Store: FindOperationKindAsync / FindTransferAsync(operationId)
     alt Existing operation
         Store-->>App: persisted kind and original result
         App-->>API: identical replay or conflict
@@ -119,7 +121,7 @@ Update both wallets in one stable ID order, independent of transfer direction. E
 
 EF/Npgsql technical retries repeat the whole transaction with clean tracking state. If commit succeeds but its acknowledgment is lost, operationId lookup resolves the ambiguous result. Cancellation before commit rolls back; after a possibly completed commit, retry the same ID. Do not promise cancellation always means no transfer.
 
-## Proposed architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -139,9 +141,9 @@ flowchart LR
 
 Do not call existing HTTP endpoints or compose DebitRewardPoints.ExecuteAsync with CreditRewardPoints.ExecuteAsync: they commit independently. A saga, messaging, mediator, generic repository or additional Unit of Work is unnecessary for this single database.
 
-## Proposed ERD and compatibility
+## ERD and compatibility
 
-The existing ERD remains the implemented schema. Separate **idempotent operation** from **ledger entry**: reward_operations owns a global primary key and Credit/Debit/Transfer kind; reward_transactions.transaction_id becomes its primary key and operation_id becomes a foreign key. Transfers produce Debit in A and Credit in B under one operationId, with different transactionIds. Ordinary movements still produce one entry.
+The AddWalletTransfers migration separates **idempotent operation** from **ledger entry**: reward_operations owns a global primary key and Credit/Debit/Transfer kind; reward_transactions.transaction_id becomes its primary key and operation_id becomes a foreign key. Transfers produce Debit in A and Credit in B under one operationId, with different transactionIds. Ordinary movements still produce one entry.
 
 ```mermaid
 erDiagram
@@ -184,18 +186,18 @@ erDiagram
     REWARDS_WALLETS ||--o{ REWARD_TRANSFERS : receives
 ```
 
-Constraints: valid kinds, distinct source/destination, transfer points 1..100, non-negative balances, nonblank/bounded reason and UNIQUE (operation_id, wallet_id) on ledger entries. New transfer FKs use Restrict/NoAction to protect evidence; no deletion endpoint exists. Review existing ledger cascade behavior explicitly during implementation.
+Constraints: valid kinds, distinct source/destination, transfer points 1..100, non-negative balances, nonblank/bounded reason and UNIQUE (operation_id, wallet_id) on ledger entries. Transfer and ledger FKs use Restrict to protect evidence; no deletion endpoint exists. The migration changes the former ledger cascade to Restrict.
 
-FK/check constraints alone do not enforce exactly two mirrored entries or matching transfer payload. The save contract must verify wallet IDs, directions, amounts, reasons and balances; integration tests exercise transactional persistence. Do not claim the ERD alone proves every cross-table invariant. Triggers are outside this proposal.
+FK/check constraints alone do not enforce exactly two mirrored entries or matching transfer payload. The save contract must verify wallet IDs, directions, amounts, reasons and balances; integration tests exercise transactional persistence. Do not claim the ERD alone proves every cross-table invariant. Triggers are outside this implementation.
 
 Keep current ledger GET representation: operationId identifies the operation; type remains Credit/Debit and wallet context determines direction. transactionId stays internal initially. Timestamp/operationId ordering still works because a wallet has at most one entry per operation. Consumers must not assume operationId identifies a globally unique ledger row. No transfer GET endpoint is needed in this phase.
 
-## Planned migration: AddWalletTransfers
+## Migration: AddWalletTransfers
 
-Do not generate EF migration files, snapshots or executable SQL during planning. During implementation:
+The generated migration, designer and EF snapshot are versioned in Infrastructure/Persistence/Migrations. The migration performs the following steps:
 
-1. Create reward_operations and backfill every existing operation_id and Credit/Debit kind. Preserve original IDs/results for replay.
-2. Add nullable transaction_id to ledger entries, populate it from their old operation_id (already unique UUIDs), make it required and move the primary key.
+1. Add required transaction_id with a temporary zero default, backfill it from the old operation_id (already unique UUIDs), remove the default, then move the primary key. No zero placeholder is retained in historical entries.
+2. Create reward_operations and backfill every existing operation_id and Credit/Debit kind. Preserve original IDs/results for replay.
 3. Add operation_id FK and UNIQUE (operation_id, wallet_id); preserve pagination indexes. Update EF mappings/snapshot.
 4. Create reward_transfers with constraints, FKs and source/destination indexes. Persist explicit stable enum values without renumbering existing Credit/Debit values.
 5. Update **existing credit/debit writes too**: reserve reward_operations and insert ledger evidence in the same transaction. Every movement route detects collisions with every operation kind.
@@ -204,7 +206,7 @@ Do not generate EF migration files, snapshots or executable SQL during planning.
 
 Local rollout: stop the old API, apply migration through updated startup (ADR-002), then serve the new version. Concurrent old/new writers are unsupported for this schema transition. A production compatibility/deployment plan is separate from this educational example.
 
-Future command, after changing mappings:
+Command used to generate the migration before reviewing its backfill and downgrade guard:
 
 ```powershell
 dotnet tool restore
@@ -215,15 +217,15 @@ dotnet tool run dotnet-ef migrations add AddWalletTransfers `
 
 ## Implementation sequence and acceptance criteria
 
-| Phase | Planned files/areas | Completion evidence |
+| Phase | Delivered files/areas | Verification scope |
 | --- | --- | --- |
 | 1. Domain | TransferAmount, wallet previews, Services/RewardTransferCalculator, RewardTransfer and ledger identity | Accept 1/100; reject -1/0/101; distinct wallets, funding/exact balance, overflow, lifecycle matrix; calculations leave snapshots unchanged on success/failure |
 | 2. Application/port | Wallets/TransferPoints/TransferRewardPoints, results and specific existing-port methods | Missing wallets, invalid direct calls, fixed clock, replay before state/funding; conflicts for source/destination/kind/points/reason; original result preserved |
 | 3. Persistence/migration | Models, mappings, repository, migration, snapshot and old movement paths | Fresh/upgrade DB; both revisions; injected failure after first UPDATE/first ledger insert leaves no writes; cross-route ID collisions |
-| 4. Concurrency | Real PostgreSQL tests, separate contexts and controlled barriers | A=100 with two simultaneous 80-point outflows permits one; identical retries create two entries total, not four; opposite transfers, ordinary movements and status races preserve balances |
+| 4. Concurrency | Real PostgreSQL tests with separate contexts and both snapshots loaded before starting saves | A=100 with two competing 80-point outflows permits one; identical retries create two entries total, not four; opposite transfers, intervening credits and lifecycle changes preserve balances |
 | 5. HTTP | DTOs, controller, handler, DI, Swagger examples, RewardFlow.http | 200/400/404/409/422; other fields valid in range tests; both balances/ledgers correct; fresh IDs in walkthrough |
-| 6. Education/docs | Both READMEs, guide, guardrails, analysis, index, ADRs and affected skills | Remove proposed labels only after implementation/tests; update current diagrams, tree, abstraction budget, ERD and commands |
+| 6. Education/docs | Both READMEs, guide, guardrails, analysis, index, ADRs and affected skills | Current diagrams, tree, contracts, abstraction budget, ERD and commands reflect the implementation |
 
 Verify conservation and absence of partial writes with PostgreSQL. Synchronize all relevant double reads/writes if modeling atomic visibility across wallets; locking only the new method is insufficient. The double does not prove database isolation.
 
-Before implementation completion: run `docker compose up -d --wait` and `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release`, inspect migration SQL and pass CI. No transfer tests have been created/executed during this planning delivery. Keep per-operation limits and suspended-destination policy explicit for business review.
+Verification command: `dotnet test RewardFlow.SuppleDesign.slnx --configuration Release`, with PostgreSQL available through `docker compose up -d --wait`. The local Release suite passes 70 tests, including transfer domain, application, HTTP, PostgreSQL fault-injection/concurrency and isolated-database migration tests. These tests demonstrate the exercised cases, not every possible failure interleaving. The GitHub CI workflow runs the same build/test stack when changes are published; no remote CI result is claimed by this local implementation. The per-operation limit and suspended-destination policy remain explicit.

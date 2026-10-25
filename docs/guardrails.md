@@ -6,7 +6,7 @@ These criteria guide people and agents. Tests verify exercised behavior; educati
 
 Follow the [constitution](constitution.md): documents, plans, ADRs, skills, diagram labels, code and comments are English. README.pt-BR.md is the explicit translation exception.
 
-Keep the model explainable through reward examples. Features need concrete rules and educational benefit. Transfers have a [proposal](transfer-plan.md), not an implementation. Expiration, campaigns and authentication remain future possibilities. Infrastructure must be proportional to the lesson.
+Keep the model explainable through reward examples. Features need concrete rules and educational benefit. Transfers are implemented as described in the [design and verification guide](transfer-plan.md). Expiration, campaigns and authentication remain future possibilities. Infrastructure must be proportional to the lesson.
 
 ## Review criteria
 
@@ -23,9 +23,9 @@ Keep the model explainable through reward examples. Features need concrete rules
 | Global operationId and original-result replay | Use cases/repository | Replay, payload conflict and concurrency |
 | Ledger outside reconstitution | Repository | Bounded/deterministic pagination, wallet loading without history |
 
-Use TrySaveMovementAsync for application credit/debit paths, not TrySaveAsync. The current double does not synchronize all methods and cannot prove PostgreSQL atomicity.
+Use TrySaveMovementAsync for application credit/debit paths, not TrySaveAsync. The double synchronizes every read/write on one gate for atomic visibility, but cannot prove PostgreSQL atomicity.
 
-Future transfers additionally require domain limits 1..100, distinct wallets, sufficient source balance, lifecycle/overflow checks, calculation without mutation, both revisions and paired entries in one transaction, cross-endpoint ID handling and history-preserving migration. Do not compose independently committing debit/credit cases. These are planned criteria, not current CI coverage. Separate operation and entry identities as proposed by ADR-003.
+Transfers additionally require domain limits 1..100, distinct wallets, sufficient source balance, lifecycle/overflow checks, calculation without mutation, both revisions and paired entries in one transaction, cross-endpoint ID handling and history-preserving migration. Do not compose independently committing debit/credit cases. The transfer tests exercise the domain, HTTP, atomicity, revision/replay and upgrade paths. Separate operation and entry identities as accepted in ADR-003; do not assume exhaustive concurrency coverage.
 
 ## Abstractions and explanations
 

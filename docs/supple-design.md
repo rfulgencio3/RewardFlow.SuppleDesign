@@ -33,6 +33,6 @@ Declarative design has no dedicated lesson. Do not claim complete Chapter 10 cov
 
 ## Adding a lesson
 
-The [transfer plan](transfer-plan.md) proposes TransferAmount (1..100), calculation without mutation across two wallets and atomic paired ledger persistence. [Proposed ADR-003](decisions/003-atomic-wallet-transfers.md) explains the domain service and transaction trade-offs. It is not implemented; current examples above remain the baseline.
+The [transfer implementation](transfer-plan.md) adds TransferAmount (1..100), RewardTransferCalculator and atomic paired ledger persistence. [ADR-003](decisions/003-atomic-wallet-transfers.md) explains the domain service and transaction trade-offs. TransferDomainTests demonstrates calculations without mutation; TransferPostgresTests verifies rollback and revision conflicts, TransferApiTests exercises HTTP, and TransferMigrationTests verifies historical replay and downgrade protection.
 
 Describe valid input, rejection and state effects. Choose the rule owner, add behavior tests and implement the smallest revealing model change. Explain the relevant pattern and its limits. Follow [guardrails](guardrails.md) and the English [language constitution](constitution.md).

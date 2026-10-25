@@ -38,6 +38,7 @@ builder.Services.AddScoped<IOpenRewardsWallet, OpenRewardsWallet>();
 builder.Services.AddScoped<IGetRewardsWallet, GetRewardsWallet>();
 builder.Services.AddScoped<ICreditRewardPoints, CreditRewardPoints>();
 builder.Services.AddScoped<IDebitRewardPoints, DebitRewardPoints>();
+builder.Services.AddScoped<ITransferRewardPoints, TransferRewardPoints>();
 builder.Services.AddScoped<IGetWalletBalance, GetWalletBalance>();
 builder.Services.AddScoped<ICheckWalletAffordability, CheckWalletAffordability>();
 builder.Services.AddScoped<ISuspendRewardsWallet, SuspendRewardsWallet>();

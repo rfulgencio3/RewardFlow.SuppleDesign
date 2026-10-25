@@ -67,8 +67,8 @@ RewardTransaction has business identity but structural record equality. Explain 
 
 The save port takes wallet/transaction separately without adapter checks for matching WalletId/BalanceAfter. Current use cases construct matching pairs; the signature alone does not prevent inconsistent callers.
 
-## Follow-up planning
+## Follow-up implementation
 
-The requested [transfer plan](transfer-plan.md) introduces a concrete need for a two-wallet calculation and wider transaction, recorded in [proposed ADR-003](decisions/003-atomic-wallet-transfers.md). Interpret 100 points per transfer and require source funding. The 38 historical tests do not establish implemented transfers.
+The delivered [transfer implementation](transfer-plan.md) introduces a concrete need for a two-wallet calculation and wider transaction, recorded in [ADR-003](decisions/003-atomic-wallet-transfers.md). Interpret 100 points per transfer and require source funding. The 38 historical tests do not establish implemented transfers.
 
-This delivery changes guidance/planning only. Runtime findings remain future increments. The [constitution](constitution.md) establishes English documentation with README.pt-BR.md as the translation exception.
+The follow-up implementation now passes 70 Release tests, including real transfer rollback/concurrency, HTTP and isolated-database migration cases. The double now synchronizes all methods. The earlier 38-test evidence and remaining unrelated findings are retained as history. The [constitution](constitution.md) establishes English documentation with README.pt-BR.md as the translation exception.

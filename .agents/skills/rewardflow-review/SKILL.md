@@ -13,6 +13,6 @@ Trace operations from public contracts through Domain to persistence. Link patte
 
 Check C# interfaces versus intention-revealing contracts; I/O versus calculations without mutation; type closure versus bounds/rejections; business contours versus technical folders; identity versus record equality.
 
-For movements, examine replay, conflicting payloads, stale revisions and atomicity. A double does not prove PostgreSQL transactions. Check whether unrelated invalid fields mask HTTP validation tests. Review proposed transfers against both revisions, paired ledger entries and cross-endpoint idempotency.
+For movements, examine replay, conflicting payloads, stale revisions and atomicity. A double does not prove PostgreSQL transactions. Check whether unrelated invalid fields mask HTTP validation tests. Review transfers against both revisions, paired ledger entries and cross-endpoint idempotency.
 
 Report findings by impact with file/method, trigger, consequence and minimal correction. Recognize justified teaching choices. Do not introduce layers without an observed problem or silently change behavior during a wording review. Report checks and gaps without claiming absolute conformance.

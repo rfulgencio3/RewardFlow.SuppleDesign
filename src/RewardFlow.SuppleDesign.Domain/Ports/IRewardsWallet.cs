@@ -21,10 +21,14 @@ public interface IRewardsWallet
     DateTimeOffset CreatedAtUtc { get; }
     /// <summary>Intention-Revealing Interfaces: currently available reward points.</summary>
     RewardPoints Balance { get; }
-    /// <summary>Intention-Revealing Interfaces: credits earned points to this wallet.</summary>
-    void Credit(RewardPoints earnedPoints);
-    /// <summary>Intention-Revealing Interfaces: debits points redeemed by the member.</summary>
-    void Debit(RewardPoints redeemedPoints);
+    /// <summary>Intention-Revealing Interfaces: increases available points for an ordinary credit.</summary>
+    void Credit(RewardPoints creditedPoints);
+    /// <summary>Intention-Revealing Interfaces: decreases available points for an ordinary debit.</summary>
+    void Debit(RewardPoints debitedPoints);
+    /// <summary>Returns a validated prospective credit balance without changing this wallet.</summary>
+    RewardPoints BalanceAfterCredit(RewardPoints creditedPoints);
+    /// <summary>Returns a validated prospective debit balance without changing this wallet.</summary>
+    RewardPoints BalanceAfterDebit(RewardPoints debitedPoints);
     /// <summary>Side-Effect-Free Functions: checks affordability without changing any state.</summary>
     bool CanAfford(RewardPoints requiredPoints);
     /// <summary>Intention-Revealing Interfaces: temporarily blocks redemptions.</summary>

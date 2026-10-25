@@ -16,7 +16,7 @@ Translate existing non-English supporting documentation when updating it, preser
 
 Keep domain invariants and immutable point arithmetic in Domain, orchestration in Application, and HTTP/EF Core in adapters. Justify abstractions with concrete rules or boundaries. Distinguish Evans' concepts from local implementation choices.
 
-Preserve detached snapshots, optimistic revisions, global idempotency and atomic balance/ledger persistence. The [transfer plan](transfer-plan.md) proposes extending these guarantees to two wallets; it is not implemented.
+Preserve detached snapshots, optimistic revisions, global idempotency and atomic balance/ledger persistence. The [transfer implementation](transfer-plan.md) extends these guarantees to two wallets in one PostgreSQL transaction.
 
 Separate implemented behavior, executed tests and proposed acceptance criteria. Label proposed diagrams. Generate executable migrations with implementation, not during documentation planning.
 

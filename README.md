@@ -61,7 +61,7 @@ The goal is to make business code easy to read, reason about and change. Small, 
 
 ## What is RewardFlow?
 
-**RewardFlow** is a small loyalty and reward-points management system. Each member is represented by a rewards wallet that can be opened, credited when points are earned, debited when points are redeemed, queried for its current balance, and checked to determine whether it can afford a redemption.
+**RewardFlow** is a small loyalty and reward-points management system. Each member is represented by a rewards wallet that can be opened, credited when points are earned, debited when points are redeemed, queried for its current balance, checked to determine whether it can afford a redemption, and used to transfer points to another wallet.
 
 The project focuses on this compact business flow so the domain language and design decisions remain easy to see. Every credit and debit has an identity, reason and immutable audit record. It is an educational model rather than a complete loyalty platform: member enrollment, campaigns, points expiration and authentication remain outside its current scope.
 
@@ -70,7 +70,7 @@ The project focuses on this compact business flow so the domain language and des
 > [!IMPORTANT]
 > **RewardFlow fulfills the purpose of Supple Design within the scope of an educational sample.** Its model speaks the language of rewards, protects invariants where the state lives, keeps queries and calculations predictable, and isolates business decisions from HTTP and persistence.
 
-The flexibility comes from explicit concepts and replaceable boundaries, not from speculative layers. PostgreSQL is implemented as a secondary adapter while EF Core remains outside the Domain and Application projects. The sample still omits factories, domain services, messaging and other mechanisms without a concrete modeling need. The [pattern mapping](#how-the-code-applies-evans-supple-design-patterns) provides the code-level evidence; the [abstraction budget](#abstraction-budget) explains why each boundary exists and when it should be reconsidered.
+The flexibility comes from explicit concepts and replaceable boundaries, not from speculative layers. PostgreSQL is implemented as a secondary adapter while EF Core remains outside the Domain and Application projects. The sample omits factories and messaging without a concrete modeling need. Its transfer domain service is justified by a rule involving two wallets. The [pattern mapping](#how-the-code-applies-evans-supple-design-patterns) provides the code-level evidence; the [abstraction budget](#abstraction-budget) explains why each boundary exists and when it should be reconsidered.
 
 ---
 
@@ -112,11 +112,11 @@ Compose starts the pinned PostgreSQL image with the local development credential
 
 ## How to perform wallet actions
 
-Routes are implemented unless marked planned. Transfers are a proposal and cannot be called yet; see the [implementation plan](docs/transfer-plan.md).
+All routes below are implemented. Transfers move 1..100 points per operation, require sufficient source balance and commit both wallets atomically; see the [implementation guide](docs/transfer-plan.md).
 
 Start the API first, then choose one of these entry points: execute requests in Swagger at [http://localhost:5180/](http://localhost:5180/), open [`RewardFlow.http`](src/RewardFlow.SuppleDesign.Api/RewardFlow.http) in a compatible HTTP client, or use the PowerShell walkthrough below.
 
-Use one wallet ID throughout a flow. A wallet must be opened before any command or query addresses it.
+Keep each wallet ID for its flow; transfers require two previously opened wallets. Retain an operationId only when retrying the same operation.
 
 | Goal | Request | Input | Expected result |
 | --- | --- | --- | --- |
@@ -124,16 +124,16 @@ Use one wallet ID throughout a flow. A wallet must be opened before any command 
 | Read wallet details | `GET /api/wallets/{id}` | No body | `200 OK` with name, status, creation time and balance |
 | Credit earned points | `POST /api/wallets/{id}/credit` | `{ "operationId": "uuid", "points": 100, "reason": "Purchase" }` | `200 OK` with the movement and resulting balance |
 | Debit redeemed points | `POST /api/wallets/{id}/debit` | `{ "operationId": "uuid", "points": 40, "reason": "Redemption" }` | `200 OK`, provided the wallet can afford the amount |
-| Transfer points — planned | POST /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, 1..100 points and reason | Proposed 200 with both resulting balances; source must have sufficient balance; atomic save |
+| Transfer points | `POST /api/wallets/{sourceWalletId}/transfers` | `operationId`, `destinationWalletId`, `points` (1..100), `reason` | `200 OK` with both resulting balances; source must have sufficient balance; atomic save |
 | Read the balance | `GET /api/wallets/{id}/balance` | No body | `200 OK` with the current points |
 | Check affordability | `GET /api/wallets/{id}/can-afford?requiredPoints=60` | Non-negative whole points in the query string | `200 OK` with `canAfford`; the balance is unchanged |
 | Read transaction history | `GET /api/wallets/{id}/transactions?page=1&pageSize=20` | A page of 1 to 100 items | `200 OK` in reverse chronological order with `hasNextPage` |
 | Suspend / reactivate / close | `POST /api/wallets/{id}/{action}` | No body | `204 No Content` after a valid lifecycle transition |
 
-The commands below create a wallet, credit 100 points, debit 40, confirm that 60 points are affordable and then demonstrate an overdraft rejection:
+The commands below create a wallet, credit 100 points, debit 40, confirm that 60 points are affordable demonstrate an overdraft rejection, and transfer 40 points to a second wallet:
 
 <details>
-<summary><strong>PowerShell: open, credit, debit and inspect a wallet</strong></summary>
+<summary><strong>PowerShell: open, credit, debit, transfer and inspect wallets</strong></summary>
 
 <br />
 
@@ -158,7 +158,7 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/balance"
 
-# Pure query: true, and the balance remains 60.
+# Read-only query: true, and the balance remains 60.
 Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?requiredPoints=60"
 
 # Rejected: 422 Unprocessable Entity; balance remains 60.
@@ -166,6 +166,19 @@ Invoke-RestMethod -Uri "$baseUri/api/wallets/$walletId/can-afford?requiredPoints
 Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
     -ContentType 'application/json' `
     -Body (@{ operationId = [guid]::NewGuid(); points = 61; reason = 'Overdraft example' } | ConvertTo-Json)
+
+# Open the destination, then transfer 40 points: source=20, destination=40.
+$destination = Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets" `
+    -ContentType 'application/json' -Body '{"name":"Transfer destination"}'
+$transferOperationId = [guid]::NewGuid()
+$transferBody = @{ operationId = $transferOperationId; destinationWalletId = $destination.walletId; points = 40; reason = 'Reward points transfer' } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/transfers" `
+    -ContentType 'application/json' -Body $transferBody
+
+# An identical retry returns the original result without moving more points.
+Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/transfers" `
+    -ContentType 'application/json' -Body $transferBody
+
 ```
 
 </details>
@@ -177,9 +190,13 @@ Invoke-RestMethod -Method Post -Uri "$baseUri/api/wallets/$walletId/debit" `
 | Reward Points | Whole, non-negative units earned and redeemed by a member; represented by `RewardPoints`. |
 | Rewards Wallet | Aggregate holding an identified member's available reward points. Member enrollment is outside this example. |
 | Open | Create an identified wallet with zero points. |
-| Credit | Add earned points to an existing wallet. |
-| Debit | Remove redeemed points from an existing wallet. |
+| Credit | Increase a wallet's available points. An ordinary credit records earned points; an incoming transfer also creates a credit entry. |
+| Debit | Decrease a wallet's available points. An ordinary debit records redeemed points; an outgoing transfer also creates a debit entry. |
 | Balance | Reward points currently available to spend. |
+| Transfer | Atomically move 1..100 points between distinct wallets, with sufficient source balance and paired ledger evidence. No points are created or destroyed. |
+| Source Wallet / Destination Wallet | The wallet providing / receiving the transferred points. |
+| Reward Operation | One accepted credit, debit or transfer, identified globally by the caller's operationId. |
+| Ledger Entry | Immutable evidence for one wallet: one entry for an ordinary movement, two linked entries for a transfer. transactionId is internal; operationId identifies the business operation. |
 | Can Afford | Determine whether the current balance covers required points without changing state. |
 | Suspend | Temporarily block redemptions while continuing to accept earned points. |
 | Reactivate | Return a suspended wallet to active use. |
@@ -191,7 +208,7 @@ The application generates a non-empty wallet ID and records its UTC creation ins
 
 ## How a request flows through the project
 
-This diagram shows the current credit flow. The proposed two-wallet transfer sequence and rollback branches are in the [transfer plan](docs/transfer-plan.md#sequence-and-atomicity).
+This diagram shows the credit flow, including the global operation lookup. The two-wallet transfer sequence and rollback branches are in the [transfer implementation](docs/transfer-plan.md#sequence-and-atomicity).
 
 The credit operation shows how the adapters and core collaborate without moving business rules into the controller or repository:
 
@@ -206,7 +223,7 @@ sequenceDiagram
 
     Client->>API: POST credit (operationId, points, reason)
     API->>UseCase: ExecuteAsync(id, operationId, points, reason)
-    UseCase->>Repository: FindTransactionAsync(operationId)
+    UseCase->>Repository: FindOperationKindAsync / FindTransactionAsync(operationId)
     UseCase->>Repository: FindAsync(id)
     Repository-->>UseCase: detached WalletSnapshot
     UseCase->>Wallet: Credit(earnedPoints)
@@ -221,14 +238,14 @@ sequenceDiagram
 1. `WalletsController` validates and translates the HTTP request, then calls the inbound application port.
 2. `CreditRewardPoints` coordinates the use case and asks the outbound repository port for a detached snapshot.
 3. `RewardsWallet.Credit` expresses the state change in domain language and delegates immutable arithmetic to `RewardPoints.Add`.
-4. The application saves with the loaded revision, so a concurrent update cannot be silently overwritten.
+4. The application saves with the loaded revision, so a concurrent update cannot be silently overwritten. Transfers require both revisions and commit both wallets and both ledger entries together; a stale revision returns 409 and rolls back all writes.
 5. The use case returns an application result, which the controller converts into an API response DTO.
 
 Debit follows the same command path. Balance and affordability are queries: they load a snapshot but never call `TrySaveAsync`; `CanAfford` does not mutate the aggregate. Known domain and application failures cross back to `ApiExceptionHandler`, which translates them into HTTP Problem Details at the outer boundary.
 
 ## Architecture: Clean Architecture and Hexagonal Ports
 
-The diagram below represents the running system. The [proposed transfer architecture](docs/transfer-plan.md#proposed-architecture) adds a domain calculator and a specific atomic persistence capability without introducing new architectural layers.
+The diagram below represents the running system. The [transfer architecture](docs/transfer-plan.md#architecture) uses a domain calculator and a specific atomic persistence capability without introducing new architectural layers.
 
 ```mermaid
 flowchart LR
@@ -244,8 +261,8 @@ flowchart LR
 
     subgraph Application["Application · Use Cases"]
         direction TB
-        InboundPorts["Inbound Ports<br/>IOpenRewardsWallet<br/>ICreditRewardPoints<br/>IDebitRewardPoints<br/>IGetWalletBalance<br/>ICheckWalletAffordability"]
-        UseCases["Use Case Implementations<br/>Open · Credit · Debit · Balance · Affordability"]
+        InboundPorts["Inbound Ports<br/>IOpenRewardsWallet<br/>ICreditRewardPoints<br/>ITransferRewardPoints<br/>IDebitRewardPoints<br/>IGetWalletBalance<br/>ICheckWalletAffordability"]
+        UseCases["Use Case Implementations<br/>Transfer - Open · Credit · Debit · Balance · Affordability"]
         InboundPorts --> UseCases
     end
 
@@ -253,10 +270,13 @@ flowchart LR
         direction TB
         WalletPort["IRewardsWallet<br/>Credit · Debit · CanAfford"]
         Wallet["RewardsWallet<br/>Aggregate"]
-        Points["RewardPoints + WalletName<br/>Immutable Value Objects"]
+        Points["RewardPoints + WalletName + TransferAmount<br/>Immutable Value Objects"]
         Rules["DomainAssertions<br/>DomainException"]
         RepositoryPort["IRewardsWalletRepository<br/>Outbound Port"]
 
+        Calculator["RewardTransferCalculator<br/>Two-wallet calculation"]
+        UseCases --> Calculator
+        Calculator --> Wallet
         WalletPort --> Wallet
         Wallet -->|delegates arithmetic| Points
         Wallet -->|enforces invariants| Rules
@@ -288,7 +308,7 @@ flowchart LR
     class Client,Database external
     class Controller,DTOs,Composition,Repository,DbContext adapter
     class UseCases application
-    class Wallet,Points,Rules domain
+    class Wallet,Points,Rules,Calculator domain
     class InboundPorts,WalletPort,RepositoryPort port
 ```
 
@@ -300,7 +320,7 @@ Domain has no project or package references. Application and Infrastructure refe
 
 ## Project structure
 
-Planned files for transfers, DTOs, persistence mappings and tests are listed by implementation phase in the [transfer plan](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). They are not part of the current tree below.
+Transfer code is included below; the [implementation guide](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria) maps each layer to its verification evidence.
 
 The folders are architectural boundaries rather than technical buckets. Each project has one direction of responsibility and a deliberately small public surface:
 
@@ -320,8 +340,11 @@ RewardFlow.SuppleDesign/
 │   │   ├── Entities/
 │   │   │   ├── RewardsWallet.cs                   # Aggregate root and lifecycle rules
 │   │   │   ├── RewardsWalletStatus.cs
+│   │   │   ├── RewardTransfer.cs                  # Original paired-operation result
 │   │   │   └── RewardTransaction.cs               # Identified immutable movement
+│   │   ├── Services/RewardTransferCalculator.cs     # Calculation without mutation
 │   │   ├── ValueObjects/
+│   │   │   ├── TransferAmount.cs                  # Transfer-specific 1..100 rule
 │   │   │   ├── RewardPoints.cs                    # Immutable arithmetic value object
 │   │   │   ├── WalletName.cs                      # Normalized name value object
 │   │   │   └── RewardReason.cs                    # Normalized movement reason
@@ -337,6 +360,7 @@ RewardFlow.SuppleDesign/
 │   │   ├── Wallets/
 │   │   │   ├── Common/                            # Results, exceptions and persistence coordination
 │   │   │   ├── OpenWallet/
+│   │   │   ├── TransferPoints/TransferRewardPoints.cs
 │   │   │   ├── CreditPoints/
 │   │   │   ├── DebitPoints/
 │   │   │   ├── ChangeStatus/
@@ -378,6 +402,11 @@ RewardFlow.SuppleDesign/
     └── RewardFlow.SuppleDesign.Tests/
         ├── TestDoubles/
         │   └── InMemoryRewardsWalletRepository.cs
+        ├── TransferDomainTests.cs
+        ├── TransferApplicationTests.cs
+        ├── TransferPostgresTests.cs
+        ├── TransferApiTests.cs
+        ├── TransferMigrationTests.cs
         ├── DomainTests.cs
         ├── ApplicationTests.cs
         ├── PostgresRepositoryTests.cs
@@ -395,7 +424,7 @@ RewardFlow.SuppleDesign/
 
 ## Evans' model building blocks and RewardFlow
 
-The current diagram remains unchanged. The proposed transfer adds a justified domain service for a calculation involving two wallets; application orchestration remains separate. See [ADR-003 (Proposed)](docs/decisions/003-atomic-wallet-transfers.md).
+The diagram includes a domain service for the calculation involving two wallets; application orchestration remains separate. See [ADR-003](docs/decisions/003-atomic-wallet-transfers.md).
 
 The supplied book figure presents Evans' broader **Model-Driven Design building blocks**. It complements Chapter 10, but it is not itself the Supple Design pattern diagram: Entities, Value Objects, Aggregates, Repositories, Services and Factories are tactical building blocks; Intention-Revealing Interfaces, Side-Effect-Free Functions, Assertions, Conceptual Contours, Standalone Classes and Closure of Operations make that model supple.
 
@@ -420,6 +449,7 @@ flowchart LR
         Wallet["RewardsWallet<br/>Entity + Aggregate Root"]
         Points["RewardPoints<br/>Immutable Value Object"]
         Repository["IRewardsWalletRepository<br/>+ PostgreSQL Adapter"]
+        Calculator["RewardTransferCalculator<br/>Domain service"]
         UseCases["Application Use Cases<br/>Open · Credit · Debit · Queries · Lifecycle"]
         Construction["Constructors<br/>Simple creation; no Factory needed"]
         Layers["Domain · Application<br/>Infrastructure · API"]
@@ -430,7 +460,7 @@ flowchart LR
     A --> Wallet
     V --> Points
     R --> Repository
-    S -.->|application coordination| UseCases
+    S --> Calculator
     F -.->|creation is still simple| Construction
     L --> Layers
     U -.->|alternative deliberately avoided| Controllers
@@ -451,7 +481,7 @@ flowchart LR
 | Value Object | `RewardPoints` and `WalletName` | Immutable, compared by value and self-validating; point arithmetic is closed under `Add` and valid `Subtract` operations. |
 | Aggregate | `RewardsWallet` | Serves as the consistency boundary and root for credits, debits and affordability rules. |
 | Repository | `IRewardsWalletRepository` | The Domain owns the outbound port; `PostgresRewardsWalletRepository` is an Infrastructure adapter, while tests use an in-memory double. |
-| Service | Application use cases | The nearest parallel coordinates workflows. They are application services, not domain services: the business rules remain in `RewardsWallet` and `RewardPoints`. |
+| Service | RewardTransferCalculator | Domain service relates two wallets using their side-effect-free balance previews. Application use cases coordinate I/O separately. |
 | Factory | Constructors | Creation is simple enough to remain in constructors. A dedicated Factory would add ceremony without protecting a new invariant. |
 | Layered Architecture | Four projects | Domain is isolated; Application coordinates it; Infrastructure and API are adapters around it. |
 | Smart UI | Deliberately absent | Controllers contain HTTP translation only. They do not own reward rules, which prevents the UI from becoming the domain model. |
@@ -465,10 +495,10 @@ Chapter 10 moves from identifying domain building blocks to shaping code that co
 | Pattern | Code | Why it matters |
 | --- | --- | --- |
 | Intention-Revealing Interfaces | `Credit`, `Debit`, `CanAfford`, `Suspend`, `Reactivate`, `Close`; named application ports | Readers use the domain's vocabulary instead of generic setters or opaque processing methods. |
-| Side-Effect-Free Functions | `RewardsWallet.CanAfford`; `RewardPoints.Add` and `Subtract` | Queries and calculations do not mutate their inputs. Affordability observes the wallet's current balance; arithmetic returns new immutable values. State changes are explicit `Credit` and `Debit` commands. |
-| Assertions | `DomainAssertions`, value-object construction, point limits and lifecycle transitions | Preconditions and post-state invariants are enforced at runtime rather than left to caller convention or debug-only assertions. HTTP validation supplements these rules; direct domain callers still receive full protection. |
+| Side-Effect-Free Functions | `RewardTransferCalculator.Calculate`, balance previews; `RewardsWallet.CanAfford`; `RewardPoints.Add` and `Subtract` | Queries and calculations do not mutate their inputs. Affordability observes the wallet's current balance; arithmetic returns new immutable values. State changes are explicit `Credit` and `Debit` commands. |
+| Assertions | `TransferAmount`, `DomainAssertions`, value-object construction, point limits and lifecycle transitions | Preconditions and post-state invariants are enforced at runtime rather than left to caller convention or debug-only assertions. HTTP validation supplements these rules; direct domain callers still receive full protection. |
 | Conceptual Contours | `RewardPoints`, `RewardsWallet`, use cases, controllers, repository port and adapter | Arithmetic, aggregate state, orchestration, transport, and persistence each have a distinct reason to change. Persistence revision metadata stays outside the aggregate. |
-| Standalone Classes | `RewardPoints` and `WalletName` | Each value object carries its immutable value and validity rules without requiring a repository, DI container, ORM or web framework. |
+| Standalone Classes | `TransferAmount`, `RewardPoints` and `WalletName` | Each value object carries its immutable value and validity rules without requiring a repository, DI container, ORM or web framework. |
 | Closure of Operations | `RewardPoints.Add(RewardPoints)` and `Subtract(RewardPoints)` | Both operands and successful results remain in the same conceptual set, so expressions compose naturally without unpacking primitives. Operations are partial over non-negative bounded integers: insufficient subtraction or overflow raises an explicit domain exception. |
 
 For example, `new RewardPoints(100).Add(new RewardPoints(25)).Subtract(new RewardPoints(40))` yields 85 points and leaves every operand unchanged. `RewardsWallet.Credit` delegates to that arithmetic and replaces its balance only after validation succeeds. `CanAfford` performs no writes, calls no external service, and has no clock or randomness dependency.
@@ -477,7 +507,7 @@ XML comments above public classes, interfaces, and methods identify the relevant
 
 ## Abstraction budget
 
-Proposed transfer additions have concrete responsibilities: `TransferAmount` owns the 1..100 limit, `RewardTransferCalculator` computes both results without mutation, and transfer evidence records the paired operation. The operation registry separates idempotency from ledger entry identity. Their justification and alternatives are in the [plan](docs/transfer-plan.md); none is implemented yet.
+Transfer abstractions have concrete responsibilities: `TransferAmount` owns the 1..100 limit, `RewardTransferCalculator` computes both results without mutation, and transfer evidence records the paired operation. The operation registry separates idempotency from ledger entry identity. Their justification and alternatives are recorded in the [implementation guide](docs/transfer-plan.md).
 
 Supple Design favors code that exposes the model with the least machinery needed to protect it. Every abstraction in this sample therefore needs a current reason to exist and a clear condition under which it should be reconsidered.
 
@@ -496,7 +526,7 @@ Supple Design favors code that exposes the model with the least machinery needed
 | `RewardFlowDbContext` and persistence models | Translate between relational storage and detached aggregates without adding EF Core annotations or tracking behavior to the Domain. | A different adapter replaces EF Core, or a mapping becomes simple enough to live entirely inside its repository. |
 | API DTOs and `ApiExceptionHandler` | Keep validation, serialization, status codes and Problem Details at the HTTP boundary. | The primary adapter changes; replace these contracts rather than leaking HTTP into the core. |
 
-The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory, domain service or event bus. None currently protects an additional invariant or supports a second adapter. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
+The project deliberately has no generic repository, Unit of Work wrapper, mediator, mapping framework, factory or event bus. RewardTransferCalculator is a domain service justified by a concrete two-wallet rule. Those omitted mechanisms currently protect no additional invariant or adapter boundary. A new layer or interface should be introduced only when a concrete requirement creates that boundary; a pattern name alone is not sufficient justification.
 
 ## Architecture decisions
 
@@ -506,7 +536,7 @@ The records preserve the reasoning so readers can distinguish a deliberate conce
 
 ## HTTP contract and errors
 
-This table lists current routes and explicitly marked proposals. The proposed `POST /api/wallets/{sourceWalletId}/transfers` contract, request/response examples and errors are in the [plan](docs/transfer-plan.md#proposed-http-contract); it is not an available endpoint.
+This table lists implemented routes. The `POST /api/wallets/{sourceWalletId}/transfers` contract, request/response examples and errors are in the [plan](docs/transfer-plan.md#http-contract).
 
 | Method | Route | Request body | Success |
 | --- | --- | --- | --- |
@@ -514,7 +544,7 @@ This table lists current routes and explicitly marked proposals. The proposed `P
 | GET | `/api/wallets/{id}` | none | 200 and wallet details |
 | POST | `/api/wallets/{id}/credit` | operation ID, points and reason | 200 and accepted movement |
 | POST | `/api/wallets/{id}/debit` | operation ID, points and reason | 200 and accepted movement |
-| POST — planned | /api/wallets/{sourceWalletId}/transfers | operationId, destinationWalletId, points (1..100), reason | Proposed 200, original transfer result; not available yet |
+| POST | `/api/wallets/{sourceWalletId}/transfers` | operationId, destinationWalletId, points (1..100), reason | 200 with the original transfer result |
 | GET | `/api/wallets/{id}/transactions?page=1&pageSize=20` | No body | 200 and a ledger page |
 | GET | `/api/wallets/{id}/balance` | none | 200 and current balance |
 | GET | `/api/wallets/{id}/can-afford?requiredPoints=60` | none | 200 and affordability result |
@@ -549,43 +579,62 @@ ASP.NET Core may add standard fields such as `type` or a trace ID. Automatic req
 
 `PostgresRewardsWalletRepository` implements the domain-owned repository port through EF Core and Npgsql. The adapter maps a persistence-only `RewardsWalletState` to a fresh `RewardsWallet` and immutable `RewardPoints` on every load. The aggregate has no EF Core attributes, proxy requirements, navigation properties or persistence constructor.
 
-Opening inserts revision `0`; PostgreSQL's primary key protects the generated identity. An accepted movement updates the balance by expected revision and inserts its immutable transaction record in one database transaction. The `operation_id` key prevents duplicates while the revision prevents lost updates. An identical retry returns the original result; different data for the same identity returns 409. A failed domain operation never reaches persistence.
+Opening inserts revision `0`; PostgreSQL's primary key protects the generated identity. An accepted movement updates the balance by expected revision and inserts its immutable transaction record in one database transaction. The `reward_operations.operation_id` key prevents duplicate operations while the revision prevents lost updates. An identical retry returns the original result; different data for the same identity returns 409. A rejected domain operation performs no writes. Transfers check both revisions in one transaction; optimistic concurrency does not eliminate PostgreSQL's normal write locks.
 
 The connection string is read from `ConnectionStrings:RewardFlow`. Local settings match `compose.yaml`; deployments can override it with the `ConnectionStrings__RewardFlow` environment variable. The checked-in password is only a local development credential.
 
 ### Database schema (ERD)
 
-This is the **implemented** schema. The [proposed transfer ERD](docs/transfer-plan.md#proposed-erd-and-compatibility) introduces `reward_operations`, `reward_transfers` and an independent ledger `transaction_id`, allowing two entries for one operation while preserving existing operation IDs.
+The implemented schema includes `reward_operations`, `reward_transfers` and an independent ledger `transaction_id`, allowing two entries for one operation while preserving existing operation IDs.
 
 The schema separates current wallet state from its immutable ledger. `WalletName`, `RewardReason` and `RewardPoints` are flattened value objects, while `revision` belongs to persistence coordination rather than to the aggregate.
 
 ```mermaid
 erDiagram
     REWARDS_WALLETS {
-        uuid id PK "aggregate identity"
-        varchar name "normalized wallet name"
-        integer status "active, suspended or closed"
-        timestamptz created_at_utc "opening instant"
-        bigint points "non-negative balance"
-        bigint revision "optimistic concurrency"
+        uuid id PK
+        varchar name
+        integer status
+        timestamptz created_at_utc
+        bigint points
+        bigint revision
+    }
+    REWARD_OPERATIONS {
+        uuid operation_id PK
+        integer kind "Credit, Debit, Transfer"
+    }
+    REWARD_TRANSFERS {
+        uuid operation_id PK,FK
+        uuid source_wallet_id FK
+        uuid destination_wallet_id FK
+        bigint points "1..100"
+        varchar reason "1..200 normalized"
+        timestamptz occurred_at_utc
+        bigint source_balance_after
+        bigint destination_balance_after
     }
     REWARD_TRANSACTIONS {
-        uuid operation_id PK "idempotent identity"
-        uuid wallet_id FK "affected wallet"
-        integer type "credit or debit"
-        bigint points "positive amount"
-        varchar reason "business reason"
-        timestamptz occurred_at_utc "accepted instant"
-        bigint balance_after "resulting balance"
+        uuid transaction_id PK
+        uuid operation_id FK
+        uuid wallet_id FK
+        integer type "Credit or Debit"
+        bigint points
+        varchar reason
+        timestamptz occurred_at_utc
+        bigint balance_after
     }
-    REWARDS_WALLETS ||--o{ REWARD_TRANSACTIONS : records
+    REWARD_OPERATIONS ||--o| REWARD_TRANSFERS : identifies
+    REWARD_OPERATIONS ||--|{ REWARD_TRANSACTIONS : records
+    REWARDS_WALLETS ||--o{ REWARD_TRANSACTIONS : has
+    REWARDS_WALLETS ||--o{ REWARD_TRANSFERS : sends
+    REWARDS_WALLETS ||--o{ REWARD_TRANSFERS : receives
 ```
 
 Check constraints reject blank names, unsupported status values, negative points and negative revisions.
 
 ### Migrations
 
-**Planned, not generated:** `AddWalletTransfers`. The [migration plan](docs/transfer-plan.md#planned-migration-addwallettransfers) specifies backfill, key/FK changes, constraints, old endpoint compatibility, upgrade tests, rollback restrictions and rollout. Existing migrations and the EF snapshot are unchanged by this documentation-only proposal.
+**Implemented:** `20261024215631_AddWalletTransfers`. The [migration plan](docs/transfer-plan.md#migration-addwallettransfers) specifies backfill, key/FK changes, constraints, old endpoint compatibility, upgrade tests, rollback restrictions and rollout. The migration, designer and updated snapshot are versioned. Backfill retains old operation IDs; downgrade is refused while transfer operations exist. Stop old API writers before upgrading.
 
 The schema migrations are versioned under `Infrastructure/Persistence/Migrations`, including the incremental wallet-profile and lifecycle change. `Program.cs` calls `ApplyRewardFlowMigrationsAsync` before middleware is activated, and that adapter helper invokes `Database.MigrateAsync`.
 
@@ -613,7 +662,7 @@ docker compose down --volumes
 
 ## Tests
 
-Transfer acceptance and concurrency scenarios are [planned separately](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria). They are not covered by the current suite below.
+The Release suite passes 70 tests. [Transfer verification](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria) covers domain rules, HTTP, two-wallet revision checks, competing/opposite transfers, injected rollback and migration preservation. It does not claim every possible interleaving is covered.
 
 The xUnit suite covers:
 
@@ -622,13 +671,13 @@ The xUnit suite covers:
 - Exact-balance redemption, zero-balance protection, empty identity, and rejected mutations preserving state.
 - Repeated affordability queries preserving the same balance reference.
 - Open/credit/debit/read orchestration, missing-wallet reads, duplicate IDs, cancellation, detached snapshots, and stale-write rejection.
-- Concurrent identical retries converging on one movement, plus rollback when a ledger insert conflicts after a balance update.
+- Concurrent retries converging on one operation; transfer rollback after injected failures following actual balance and ledger writes.
 - Ledger pagination and `hasNextPage`. The implementation fetches one extra item instead of issuing a count query; the suite verifies pagination results rather than SQL query counts.
 - PostgreSQL mapping, startup migration and conditional revision updates through the real adapter. Persistence across API restarts follows from PostgreSQL storage; the suite does not include a dedicated restart test.
 - Real ASP.NET Core routing and DI through `WebApplicationFactory`, response contracts, 201/200/400/404/409/422 behavior, Problem Details, and malformed request bodies.
 - Meaningful Swagger examples that remain independent from HTTP validation implementation.
 
-Every database test uses fresh wallet identities. Start PostgreSQL with `docker compose up -d --wait`; `dotnet test RewardFlow.SuppleDesign.slnx` then builds the solution, applies pending migrations and executes the suite without starting an external HTTP server. Application tests use the in-memory repository only as a fast test double for the same port semantics.
+Database tests use fresh wallet identities. The migration test creates and drops its own temporary database, so the configured test user needs CREATEDB permission (provided by the local Compose user). Start PostgreSQL with `docker compose up -d --wait`; `dotnet test RewardFlow.SuppleDesign.slnx` then builds the solution, applies pending migrations and executes the suite without starting an external HTTP server. Application tests use the in-memory repository only as a fast test double for the same port semantics.
 
 ## Future educational improvements
 
@@ -638,7 +687,6 @@ Future additions should introduce a concrete modeling pressure and make its effe
 | --- | --- | --- |
 | Points expiration | How should points earned at different times expire while preserving valid redemption rules? | Introduce explicit temporal concepts, Intention-Revealing Interfaces and Assertions instead of spreading date comparisons across use cases. |
 | Configurable earning policy | How are purchase amount, campaign and membership tier converted into points? | Model the calculation as a Standalone Class with a Side-Effect-Free Function whose inputs and result are explicit. |
-| Transfer between wallets — planned | Move 1..100 points from a funded active source to a different eligible destination, atomically. | [Implementation plan](docs/transfer-plan.md): explicit amount, calculation without mutation, global idempotency and a transaction spanning two wallet revisions. Not implemented. |
 | Algebraic and property-based examples | Which properties always hold for reward-point operations? | Demonstrate Closure of Operations, immutability and invariants with properties such as additive identity and rejected underflow. |
 
 Each increment should begin with examples, vocabulary and failing tests. Only then should the model change. The README and abstraction budget should be updated with the new decision, alternatives considered and the condition that justifies every new type or boundary.

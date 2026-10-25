@@ -46,7 +46,7 @@ public sealed record RewardTransaction
 public enum RewardTransactionType
 {
     /// <summary>Earned points added to the wallet.</summary>
-    Credit,
+    Credit = 0,
     /// <summary>Redeemed points removed from the wallet.</summary>
-    Debit
+    Debit = 1
 }
