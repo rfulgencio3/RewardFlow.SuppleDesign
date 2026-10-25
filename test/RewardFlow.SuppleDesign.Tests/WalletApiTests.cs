@@ -116,20 +116,47 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    /// <summary>Conceptual Contours: malformed HTTP contracts are rejected before domain execution.</summary>
+    /// <summary>HTTP validation: only points are invalid; identity, reason and the addressed wallet remain valid.</summary>
     [Theory]
-    [InlineData("{}")]
-    [InlineData("{\"points\":null}")]
-    [InlineData("{\"points\":0}")]
-    [InlineData("{\"points\":-1}")]
-    [InlineData("{\"points\":1.5}")]
-    [InlineData("{\"points\":9223372036854775808}")]
-    [InlineData("invalid json")]
-    public async Task InvalidPointsReturnBadRequest(string json)
+    [InlineData("credit", null)]
+    [InlineData("credit", "null")]
+    [InlineData("credit", "0")]
+    [InlineData("credit", "-1")]
+    [InlineData("credit", "1.5")]
+    [InlineData("credit", "9223372036854775808")]
+    [InlineData("debit", null)]
+    [InlineData("debit", "null")]
+    [InlineData("debit", "0")]
+    [InlineData("debit", "-1")]
+    [InlineData("debit", "1.5")]
+    [InlineData("debit", "9223372036854775808")]
+    public async Task InvalidPointsReturnBadRequest(string movement, string? points)
     {
+        var (_, path) = await OpenWalletAsync("Validation wallet");
+        var pointsProperty = points is null ? string.Empty : $",\"points\":{points}";
+        var json = $$"""{"operationId":"{{Guid.NewGuid()}}","reason":"Reward movement"{{pointsProperty}}}""";
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-        var response = await client.PostAsync($"/api/wallets/{Guid.NewGuid()}/credit", content);
+        var response = await client.PostAsync($"{path}/{movement}", content);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var errors = problem.GetProperty("errors");
+        Assert.Contains(errors.EnumerateObject(), error =>
+            error.Name.Equals("Points", StringComparison.OrdinalIgnoreCase) ||
+            error.Name.Equals("$.points", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(errors.EnumerateObject(), error =>
+            error.Name.Equals("OperationId", StringComparison.OrdinalIgnoreCase) ||
+            error.Name.Equals("Reason", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Malformed JSON is a body-format error, tested separately from individual point-field rules.</summary>
+    [Theory]
+    [InlineData("credit")]
+    [InlineData("debit")]
+    public async Task MalformedMovementJsonReturnsBadRequest(string movement)
+    {
+        var (_, path) = await OpenWalletAsync("Malformed request wallet");
+        using var content = new StringContent("invalid json", System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"{path}/{movement}", content)).StatusCode);
     }
 
     /// <summary>Assertions: a zero balance cannot fund even a one-point redemption.</summary>

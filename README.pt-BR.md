@@ -635,11 +635,13 @@ docker compose down --volumes
 
 ## Testes
 
-A suíte Release passa 70 testes, incluindo [verificações de transferência](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria): domínio, HTTP, revisões de duas carteiras, concorrência, rollback com falhas injetadas e preservação de histórico na migration. Isso não implica cobertura de todos os entrelaçamentos possíveis.
+A suíte Release passa 77 testes, incluindo [verificações de transferência](docs/transfer-plan.md#implementation-sequence-and-acceptance-criteria): domínio, HTTP, revisões de duas carteiras, concorrência, rollback com falhas injetadas e preservação de histórico na migration. Isso não implica cobertura de todos os entrelaçamentos possíveis.
 
 O teste de migration cria e remove seu próprio banco temporário; o usuário configurado precisa de CREATEDB, disponível no usuário do Compose local.
 
 A suíte xUnit cobre:
+
+- Validação isolada de `points` em crédito e débito, mantendo carteira, identidade da operação e motivo válidos; ausência/null, zero, negativos, frações e overflow são verificados sem outros campos inválidos. JSON malformado possui casos separados.
 
 - Igualdade por valor, aritmética imutável, limites, saldo insuficiente e overflow.
 - Normalização do nome, identidade gerada, criação em UTC e transições do ciclo de vida.

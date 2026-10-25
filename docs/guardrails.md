@@ -46,7 +46,7 @@ For core-only investigation, use `dotnet test RewardFlow.SuppleDesign.slnx --con
 
 For docs, check links, examples, language, README alignment and implemented/proposed labels. Validate changed skills with skill-creator quick_validate.py when available. Do not test Markdown wording mechanically.
 
-Current CI restores, builds Release and tests PostgreSQL. It has no dedicated architecture, language, skill-selection or educational-quality check. Report unexecuted checks and causes.
+Current CI restores, builds Release and tests PostgreSQL. Checkout uses [actions/checkout@v7](https://github.com/actions/checkout/tree/v7) and SDK setup uses [actions/setup-dotnet@v6](https://github.com/actions/setup-dotnet/tree/v6), both declaring the Node.js 24 runtime. The workflow uses GitHub-hosted ubuntu-latest runners and explicitly selects SDKs 8.0.426 and 9.0.319, verified in the previous successful run. Exact SDK versions avoid moving channel redirects that returned HTTP 409 during this update; review these pins when updating SDK patches. It has no dedicated architecture, language, skill-selection or educational-quality check. Report unexecuted checks and causes.
 
 ## People and tools
 
