@@ -384,7 +384,17 @@ RewardFlow.SuppleDesign/
 │       │       └── WalletsController.cs
 │       ├── DTOs/
 │       │   └── Wallets/
-│       │       ├── WalletContracts.cs
+│       │       ├── NotWhiteSpaceAttribute.cs
+│       │       ├── OpenWalletRequest.cs
+│       │       ├── OpenWalletResponse.cs
+│       │       ├── RewardMovementRequest.cs
+│       │       ├── RewardMovementResponse.cs
+│       │       ├── RewardTransactionPageResponse.cs
+│       │       ├── RewardTransferRequest.cs
+│       │       ├── RewardTransferResponse.cs
+│       │       ├── WalletAffordabilityResponse.cs
+│       │       ├── WalletBalanceResponse.cs
+│       │       ├── WalletDetailsResponse.cs
 │       │       └── WalletContractExamples.cs
 │       ├── Errors/
 │       │   └── ApiExceptionHandler.cs
