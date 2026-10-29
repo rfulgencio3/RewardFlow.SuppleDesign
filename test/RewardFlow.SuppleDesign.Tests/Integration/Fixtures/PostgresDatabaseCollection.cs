@@ -1,4 +1,4 @@
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 
 /// <summary>Serializes tests that share the local PostgreSQL database and its migration history.</summary>
 [CollectionDefinition(Name, DisableParallelization = true)]

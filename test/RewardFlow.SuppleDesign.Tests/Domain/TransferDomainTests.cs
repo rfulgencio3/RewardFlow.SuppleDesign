@@ -3,7 +3,7 @@ using RewardFlow.SuppleDesign.Domain.Exceptions;
 using RewardFlow.SuppleDesign.Domain.Services;
 using RewardFlow.SuppleDesign.Domain.ValueObjects;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Domain;
 
 /// <summary>Executable lessons for transfer assertions and calculations without side effects.</summary>
 public sealed class TransferDomainTests
@@ -17,10 +17,15 @@ public sealed class TransferDomainTests
     [InlineData(100)]
     public void TransferCalculatesBothBalancesWithoutChangingEitherWallet(long points)
     {
+        // Arrange
         var source = Wallet(100);
         var destination = Wallet(20);
         var before = source.Balance;
+
+        // Act
         var result = RewardTransferCalculator.Calculate(source, destination, new TransferAmount(points));
+
+        // Assert
         Assert.Equal(100 - points, result.Source.Value);
         Assert.Equal(20 + points, result.Destination.Value);
         Assert.Equal(120, result.Source.Value + result.Destination.Value);
@@ -36,7 +41,14 @@ public sealed class TransferDomainTests
     [InlineData(long.MaxValue)]
     public void TransferLimitDoesNotChangeOrdinaryPointRules(long points)
     {
-        Assert.Equal("invalid_transfer_amount", Assert.Throws<DomainException>(() => new TransferAmount(points)).Code);
+        // Arrange
+        var create = () => new TransferAmount(points);
+
+        // Act
+        var exception = Assert.Throws<DomainException>(create);
+
+        // Assert
+        Assert.Equal("invalid_transfer_amount", exception.Code);
         Assert.Equal(1000, new RewardPoints(1000).Value);
     }
 
@@ -49,12 +61,17 @@ public sealed class TransferDomainTests
     [InlineData(RewardsWalletStatus.Closed, RewardsWalletStatus.Active, false)]
     public void WalletsRetainTheirLifecycleRules(RewardsWalletStatus sourceStatus, RewardsWalletStatus destinationStatus, bool valid)
     {
+        // Arrange
         var source = Wallet(100, sourceStatus);
         var destination = Wallet(10, destinationStatus);
+
+        // Act
         if (valid)
             Assert.Equal(110, RewardTransferCalculator.Calculate(source, destination, new TransferAmount(100)).Destination.Value);
         else
             Assert.Throws<DomainException>(() => RewardTransferCalculator.Calculate(source, destination, new TransferAmount(100)));
+
+        // Assert
         Assert.Equal(100, source.Balance.Value);
         Assert.Equal(10, destination.Balance.Value);
     }
@@ -63,14 +80,22 @@ public sealed class TransferDomainTests
     [Fact]
     public void InsufficientBalanceOverflowAndSameWalletPreserveBothInputs()
     {
+        // Arrange
         var source = Wallet(99);
         var destination = Wallet(long.MaxValue);
-        Assert.Equal("insufficient_points", Assert.Throws<DomainException>(() =>
-            RewardTransferCalculator.Calculate(source, destination, new TransferAmount(100))).Code);
-        Assert.Equal("points_limit_exceeded", Assert.Throws<DomainException>(() =>
-            RewardTransferCalculator.Calculate(source, destination, new TransferAmount(1))).Code);
-        Assert.Equal("same_wallet_transfer", Assert.Throws<DomainException>(() =>
-            RewardTransferCalculator.Calculate(source, source, new TransferAmount(1))).Code);
+
+        // Act
+        var insufficient = Assert.Throws<DomainException>(() =>
+            RewardTransferCalculator.Calculate(source, destination, new TransferAmount(100)));
+        var overflow = Assert.Throws<DomainException>(() =>
+            RewardTransferCalculator.Calculate(source, destination, new TransferAmount(1)));
+        var sameWallet = Assert.Throws<DomainException>(() =>
+            RewardTransferCalculator.Calculate(source, source, new TransferAmount(1)));
+
+        // Assert
+        Assert.Equal("insufficient_points", insufficient.Code);
+        Assert.Equal("points_limit_exceeded", overflow.Code);
+        Assert.Equal("same_wallet_transfer", sameWallet.Code);
         Assert.Equal(99, source.Balance.Value);
         Assert.Equal(long.MaxValue, destination.Balance.Value);
     }

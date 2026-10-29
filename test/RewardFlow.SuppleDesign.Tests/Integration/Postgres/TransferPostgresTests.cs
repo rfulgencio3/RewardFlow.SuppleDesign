@@ -1,3 +1,4 @@
+using RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -9,7 +10,7 @@ using RewardFlow.SuppleDesign.Domain.ValueObjects;
 using RewardFlow.SuppleDesign.Infrastructure.Persistence;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Postgres;
 
 /// <summary>Real PostgreSQL evidence for paired writes, rollback and concurrency.</summary>
 [Collection(PostgresDatabaseCollection.Name)]
@@ -53,6 +54,7 @@ public sealed class TransferPostgresTests
     [InlineData(true)]
     public async Task ConcurrentTransfersCannotDoubleSpendOrDuplicateEvidence(bool sameOperation)
     {
+        // Arrange
         await using var setup = Context();
         var wallets = await SeedAsync(setup);
         await using var firstContext = Context();
@@ -62,9 +64,11 @@ public sealed class TransferPostgresTests
         var id = Guid.NewGuid();
         var one = await PrepareAsync(first, wallets.Source, wallets.Destination, id);
         var two = await PrepareAsync(second, wallets.Source, wallets.Destination, sameOperation ? id : Guid.NewGuid());
+        // Act
         var results = await Task.WhenAll(
             first.TrySaveTransferAsync(one.Transfer, one.SourceRevision, one.DestinationRevision),
             second.TrySaveTransferAsync(two.Transfer, two.SourceRevision, two.DestinationRevision));
+        // Assert
         Assert.Single(results, result => result == MovementSaveResult.Saved);
         Assert.Contains(sameOperation ? MovementSaveResult.DuplicateOperation : MovementSaveResult.RevisionConflict, results);
         await using var readContext = Context();
@@ -87,11 +91,13 @@ public sealed class TransferPostgresTests
     [InlineData(true)]
     public async Task FailureAfterBalanceOrLedgerWriteRollsBackEverything(bool failLedger)
     {
+        // Arrange
         await using var setup = Context();
         var wallets = await SeedAsync(setup);
         var prepared = await PrepareAsync(new(setup), wallets.Source, wallets.Destination, Guid.NewGuid());
         var fault = new WriteFailure(failLedger);
         await using var failing = Context(fault);
+        // Act
         if (failLedger)
         {
             var exception = await Assert.ThrowsAsync<DbUpdateException>(() => new PostgresRewardsWalletRepository(failing)
@@ -101,6 +107,7 @@ public sealed class TransferPostgresTests
         else
             await Assert.ThrowsAsync<InvalidOperationException>(() => new PostgresRewardsWalletRepository(failing)
                 .TrySaveTransferAsync(prepared.Transfer, prepared.SourceRevision, prepared.DestinationRevision));
+        // Assert
         Assert.True(fault.Fired);
         await using var verification = Context();
         var reader = new PostgresRewardsWalletRepository(verification);
@@ -122,11 +129,13 @@ public sealed class TransferPostgresTests
     [InlineData(true, true)]
     public async Task StaleRevisionOnEitherWalletRejectsTheTransfer(bool changeDestination, bool creditInstead)
     {
+        // Arrange
         await using var setup = Context();
         var wallets = await SeedAsync(setup);
         var repository = new PostgresRewardsWalletRepository(setup);
         var prepared = await PrepareAsync(repository, wallets.Source, wallets.Destination, Guid.NewGuid());
         var changed = (await repository.FindAsync(changeDestination ? wallets.Destination : wallets.Source))!;
+        // Act
         if (creditInstead)
             await new CreditRewardPoints(repository, TimeProvider.System).ExecuteAsync(changed.Wallet.Id, Guid.NewGuid(), 1, "Concurrent credit");
         else
@@ -134,6 +143,7 @@ public sealed class TransferPostgresTests
             changed.Wallet.Suspend();
             Assert.True(await repository.TrySaveAsync(changed.Wallet, changed.Revision));
         }
+        // Assert
         Assert.Equal(MovementSaveResult.RevisionConflict, await repository.TrySaveTransferAsync(prepared.Transfer,
             prepared.SourceRevision, prepared.DestinationRevision));
         Assert.Equal(100 + (creditInstead && !changeDestination ? 1 : 0), (await repository.FindAsync(wallets.Source))!.Wallet.Balance.Value);
@@ -145,6 +155,7 @@ public sealed class TransferPostgresTests
     [Fact]
     public async Task OppositeTransfersCompleteWithoutDeadlockOrLostPoints()
     {
+        // Arrange
         await using var setup = Context();
         var wallets = await SeedAsync(setup);
         await new CreditRewardPoints(new PostgresRewardsWalletRepository(setup), TimeProvider.System)
@@ -155,9 +166,11 @@ public sealed class TransferPostgresTests
         var second = new PostgresRewardsWalletRepository(secondContext);
         var one = await PrepareAsync(first, wallets.Source, wallets.Destination, Guid.NewGuid(), 30);
         var two = await PrepareAsync(second, wallets.Destination, wallets.Source, Guid.NewGuid(), 20);
+        // Act
         var results = await Task.WhenAll(
             first.TrySaveTransferAsync(one.Transfer, one.SourceRevision, one.DestinationRevision),
             second.TrySaveTransferAsync(two.Transfer, two.SourceRevision, two.DestinationRevision));
+        // Assert
         Assert.Single(results, item => item == MovementSaveResult.Saved);
         Assert.Contains(MovementSaveResult.RevisionConflict, results);
         var source = (await first.FindAsync(wallets.Source))!.Wallet.Balance.Value;
