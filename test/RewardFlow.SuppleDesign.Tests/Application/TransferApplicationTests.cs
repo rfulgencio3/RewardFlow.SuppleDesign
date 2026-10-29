@@ -2,7 +2,7 @@ using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Domain.Exceptions;
 using RewardFlow.SuppleDesign.Tests.TestDoubles;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Application;
 
 /// <summary>Use-case examples for original-result replay and failed requests.</summary>
 public sealed class TransferApplicationTests
@@ -17,6 +17,7 @@ public sealed class TransferApplicationTests
     [Fact]
     public async Task TransferReplaysOriginalResultAfterClosureAndRejectsCrossEndpointCollisions()
     {
+        // Arrange
         var repository = new InMemoryRewardsWalletRepository();
         var source = (await new OpenRewardsWallet(repository, Clock).ExecuteAsync("Source")).WalletId;
         var destination = (await new OpenRewardsWallet(repository, Clock).ExecuteAsync("Destination")).WalletId;
@@ -25,7 +26,10 @@ public sealed class TransferApplicationTests
         await credit.ExecuteAsync(source, fundingId, 200, "Funding");
         var useCase = new TransferRewardPoints(repository, Clock);
         var id = Guid.NewGuid();
+        // Act
         var first = await useCase.ExecuteAsync(source, destination, id, 100, " Transfer ");
+
+        // Assert
         Assert.Equal(Clock.GetUtcNow(), first.OccurredAtUtc);
         Assert.Equal(100, first.SourceBalanceAfter);
         Assert.Equal(100, first.DestinationBalanceAfter);
@@ -46,10 +50,14 @@ public sealed class TransferApplicationTests
     [Fact]
     public async Task InvalidOrMissingWalletsAndCancellationCannotMovePoints()
     {
+        // Arrange
         var repository = new InMemoryRewardsWalletRepository();
         var source = (await new OpenRewardsWallet(repository, Clock).ExecuteAsync("Source")).WalletId;
         var useCase = new TransferRewardPoints(repository, Clock);
+        // Act
         await Assert.ThrowsAsync<DomainException>(() => useCase.ExecuteAsync(source, Guid.NewGuid(), Guid.NewGuid(), 101, "Transfer"));
+
+        // Assert
         await Assert.ThrowsAsync<WalletNotFoundException>(() => useCase.ExecuteAsync(source, Guid.NewGuid(), Guid.NewGuid(), 1, "Transfer"));
         await Assert.ThrowsAsync<OperationCanceledException>(() => useCase.ExecuteAsync(source, Guid.NewGuid(), Guid.NewGuid(), 1, "Transfer", new CancellationToken(true)));
         Assert.Equal(0, (await new GetWalletBalance(repository).ExecuteAsync(source)).Points);

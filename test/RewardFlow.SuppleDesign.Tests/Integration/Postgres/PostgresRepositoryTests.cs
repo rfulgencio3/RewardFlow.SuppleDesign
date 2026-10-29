@@ -1,3 +1,4 @@
+using RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Domain.Entities;
@@ -6,7 +7,7 @@ using RewardFlow.SuppleDesign.Domain.ValueObjects;
 using RewardFlow.SuppleDesign.Infrastructure.Persistence;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Postgres;
 
 /// <summary>Verifies that the PostgreSQL adapter honors the repository port's concurrency contract.</summary>
 [Collection(PostgresDatabaseCollection.Name)]
@@ -19,6 +20,7 @@ public sealed class PostgresRepositoryTests
     [Fact]
     public async Task StaleSnapshotCannotOverwritePersistedBalance()
     {
+        // Arrange
         var options = new DbContextOptionsBuilder<RewardFlowDbContext>()
             .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ?? DefaultConnectionString)
             .Options;
@@ -45,8 +47,13 @@ public sealed class PostgresRepositoryTests
         first.Wallet.Close();
         stale.Wallet.Credit(new RewardPoints(20));
 
-        Assert.True(await firstRepository.TrySaveAsync(first.Wallet, first.Revision));
-        Assert.False(await secondRepository.TrySaveAsync(stale.Wallet, stale.Revision));
+        // Act
+        var savedFirst = await firstRepository.TrySaveAsync(first.Wallet, first.Revision);
+        var savedStale = await secondRepository.TrySaveAsync(stale.Wallet, stale.Revision);
+
+        // Assert
+        Assert.True(savedFirst);
+        Assert.False(savedStale);
 
         await using var verificationContext = new RewardFlowDbContext(options);
         var saved = await new PostgresRewardsWalletRepository(verificationContext).FindAsync(walletId);
@@ -61,6 +68,7 @@ public sealed class PostgresRepositoryTests
     [Fact]
     public async Task MovementPersistsBalanceAndImmutableLedgerAtomically()
     {
+        // Arrange
         var options = new DbContextOptionsBuilder<RewardFlowDbContext>()
             .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ?? DefaultConnectionString)
             .Options;
@@ -77,9 +85,12 @@ public sealed class PostgresRepositoryTests
         var movement = new RewardTransaction(operationId, walletId, RewardTransactionType.Credit,
             new RewardPoints(15), new RewardReason("Purchase reward"), occurredAt, snapshot.Wallet.Balance);
 
-        Assert.Equal(MovementSaveResult.Saved,
-            await repository.TrySaveMovementAsync(snapshot.Wallet, movement, snapshot.Revision));
+        // Act
+        var result = await repository.TrySaveMovementAsync(snapshot.Wallet, movement, snapshot.Revision);
         var saved = await repository.FindTransactionAsync(operationId);
+
+        // Assert
+        Assert.Equal(MovementSaveResult.Saved, result);
         Assert.Equal(movement, saved);
         Assert.Equal(movement, Assert.Single(await repository.ListTransactionsAsync(walletId, 0, 20)));
         Assert.Equal(15, (await repository.FindAsync(walletId))!.Wallet.Balance.Value);
@@ -89,6 +100,7 @@ public sealed class PostgresRepositoryTests
     [Fact]
     public async Task DuplicateTransactionRollsBackBalanceUpdate()
     {
+        // Arrange
         var options = new DbContextOptionsBuilder<RewardFlowDbContext>()
             .UseNpgsql(Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ?? DefaultConnectionString)
             .Options;
@@ -107,6 +119,7 @@ public sealed class PostgresRepositoryTests
         first.Wallet.Credit(new RewardPoints(10));
         var accepted = new RewardTransaction(operationId, firstWalletId, RewardTransactionType.Credit,
             new RewardPoints(10), new RewardReason("Original operation"), occurredAt, first.Wallet.Balance);
+        // Act
         Assert.Equal(MovementSaveResult.Saved,
             await repository.TrySaveMovementAsync(first.Wallet, accepted, first.Revision));
 
@@ -116,6 +129,7 @@ public sealed class PostgresRepositoryTests
         second.Wallet.Credit(new RewardPoints(20));
         var duplicate = new RewardTransaction(operationId, secondWalletId, RewardTransactionType.Credit,
             new RewardPoints(20), new RewardReason("Conflicting operation"), occurredAt, second.Wallet.Balance);
+        // Assert
         Assert.Equal(MovementSaveResult.DuplicateOperation,
             await conflictingRepository.TrySaveMovementAsync(second.Wallet, duplicate, second.Revision));
 
@@ -127,6 +141,7 @@ public sealed class PostgresRepositoryTests
     [Fact]
     public async Task ConcurrentIdenticalCreditsConvergeOnOneMovement()
     {
+        // Arrange
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ?? DefaultConnectionString;
         var options = new DbContextOptionsBuilder<RewardFlowDbContext>().UseNpgsql(connectionString).Options;
         var walletId = Guid.NewGuid();
@@ -145,10 +160,12 @@ public sealed class PostgresRepositoryTests
         var firstUseCase = new CreditRewardPoints(new PostgresRewardsWalletRepository(firstContext), TimeProvider.System);
         var secondUseCase = new CreditRewardPoints(new PostgresRewardsWalletRepository(secondContext), TimeProvider.System);
 
+        // Act
         var results = await Task.WhenAll(
             firstUseCase.ExecuteAsync(walletId, operationId, 30, "Concurrent purchase"),
             secondUseCase.ExecuteAsync(walletId, operationId, 30, "Concurrent purchase"));
 
+        // Assert
         Assert.Equal(results[0], results[1]);
         await using var verificationContext = new RewardFlowDbContext(options);
         var verificationRepository = new PostgresRewardsWalletRepository(verificationContext);

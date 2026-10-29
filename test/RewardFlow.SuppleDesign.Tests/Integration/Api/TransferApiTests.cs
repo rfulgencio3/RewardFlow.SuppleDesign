@@ -1,10 +1,11 @@
+using RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Api;
 
 /// <summary>Real HTTP contracts for transfers, validation and original-result replay.</summary>
 [Collection(PostgresDatabaseCollection.Name)]
@@ -22,6 +23,7 @@ public sealed class TransferApiTests(WebApplicationFactory<Program> factory) : I
     [Fact]
     public async Task TransferJourneyIsAtomicAndIdempotent()
     {
+        // Arrange
         var source = await OpenAsync("Transfer source");
         var destination = await OpenAsync("Transfer destination");
         var fundingId = Guid.NewGuid();
@@ -30,7 +32,10 @@ public sealed class TransferApiTests(WebApplicationFactory<Program> factory) : I
         var id = Guid.NewGuid();
         var body = new { operationId = id, destinationWalletId = destination, points = 100, reason = "Transfer" };
         var path = $"/api/wallets/{source}/transfers";
+        // Act
         var response = await client.PostAsJsonAsync(path, body);
+
+        // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(0, result.GetProperty("sourceBalanceAfter").GetInt64());
@@ -66,19 +71,27 @@ public sealed class TransferApiTests(WebApplicationFactory<Program> factory) : I
     [InlineData("9223372036854775808")]
     public async Task InvalidTransferAmountsReturnBadRequest(string points)
     {
+        // Arrange
         var json = $$"""{"operationId":"{{Guid.NewGuid()}}","destinationWalletId":"{{Guid.NewGuid()}}","points":{{points}},"reason":"Transfer"}""";
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        // Act
+        var response = await client.PostAsync($"/api/wallets/{Guid.NewGuid()}/transfers", content);
+
+        // Assert
         Assert.Equal(HttpStatusCode.BadRequest,
-            (await client.PostAsync($"/api/wallets/{Guid.NewGuid()}/transfers", content)).StatusCode);
+            response.StatusCode);
     }
 
     /// <summary>Business rejections and missing identities have their expected HTTP status and no state change.</summary>
     [Fact]
     public async Task MissingWalletSameWalletAndInsufficientBalanceReturnProblemDetails()
     {
+        // Arrange
         var source = await OpenAsync("Empty source");
         var destination = await OpenAsync("Destination");
         var path = $"/api/wallets/{source}/transfers";
+        // Act
         foreach (var (target, status, code) in new[]
         {
             (destination, HttpStatusCode.UnprocessableEntity, "insufficient_points"),
@@ -89,6 +102,7 @@ public sealed class TransferApiTests(WebApplicationFactory<Program> factory) : I
         {
             var response = await client.PostAsJsonAsync(path,
                 new { operationId = Guid.NewGuid(), destinationWalletId = target, points = 1, reason = "Transfer" });
+            // Assert
             Assert.Equal(status, response.StatusCode);
             Assert.Equal("application/problem+json", response.Content.Headers.ContentType!.MediaType);
             Assert.Equal(code, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());

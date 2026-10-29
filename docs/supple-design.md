@@ -15,7 +15,7 @@ Read RewardPoints and its tests, then RewardsWallet, before following credit int
 | Standalone Classes | Value objects work without wallets, HTTP or storage | Construct RewardPoints in domain tests | Small assertion collaborations remain; standalone does not mean zero dependencies |
 | Closure of Operations | Add/Subtract accept and return RewardPoints | Compose 100, add 25, subtract 40, yielding 85 | Subtraction is partial; addition is bounded by long; invalid operations fail |
 
-See [Domain](../src/RewardFlow.SuppleDesign.Domain), [DomainTests.cs](../test/RewardFlow.SuppleDesign.Tests/DomainTests.cs) and [ApplicationTests.cs](../test/RewardFlow.SuppleDesign.Tests/ApplicationTests.cs).
+See [Domain](../src/RewardFlow.SuppleDesign.Domain), [DomainTests.cs](../test/RewardFlow.SuppleDesign.Tests/Domain/DomainTests.cs) and [ApplicationTests.cs](../test/RewardFlow.SuppleDesign.Tests/Application/ApplicationTests.cs).
 
 ## End-to-end example
 

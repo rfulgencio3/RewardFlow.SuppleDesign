@@ -1,3 +1,4 @@
+using RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -6,7 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using RewardFlow.SuppleDesign.Api.DTOs.Wallets;
 using RewardFlow.SuppleDesign.Domain.Entities;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Api;
 
 /// <summary>Verifies the HTTP primary adapter, composition root and Problem Details boundary.</summary>
 [Collection(PostgresDatabaseCollection.Name)]
@@ -31,12 +32,16 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task RootRedirectsToSwaggerAndOpenApiIsAvailable()
     {
+        // Arrange
         using var noRedirectClient = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false
         });
 
+        // Act
         var root = await noRedirectClient.GetAsync("/");
+
+        // Assert
         Assert.Equal(HttpStatusCode.Redirect, root.StatusCode);
         Assert.Equal("/swagger", root.Headers.Location!.ToString());
 
@@ -66,8 +71,13 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task WalletJourneyAndOverdraftProtection()
     {
+        // Arrange
         var (walletId, path) = await OpenWalletAsync("Primary rewards");
+
+        // Act
         var details = await client.GetFromJsonAsync<WalletDetailsResponse>(path, JsonOptions);
+
+        // Assert
         Assert.Equal(walletId, details!.WalletId);
         Assert.Equal("Primary rewards", details.Name);
         Assert.Equal(RewardsWalletStatus.Active, details.Status);
@@ -112,7 +122,13 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [InlineData("?requiredPoints=1.5")]
     public async Task InvalidAffordabilityQueryReturnsBadRequest(string query)
     {
-        var response = await client.GetAsync($"/api/wallets/{Guid.NewGuid()}/can-afford{query}");
+        // Arrange
+        var path = $"/api/wallets/{Guid.NewGuid()}/can-afford{query}";
+
+        // Act
+        var response = await client.GetAsync(path);
+
+        // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -132,11 +148,15 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [InlineData("debit", "9223372036854775808")]
     public async Task InvalidPointsReturnBadRequest(string movement, string? points)
     {
+        // Arrange
         var (_, path) = await OpenWalletAsync("Validation wallet");
         var pointsProperty = points is null ? string.Empty : $",\"points\":{points}";
         var json = $$"""{"operationId":"{{Guid.NewGuid()}}","reason":"Reward movement"{{pointsProperty}}}""";
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        // Act
         var response = await client.PostAsync($"{path}/{movement}", content);
+
+        // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
         var errors = problem.GetProperty("errors");
@@ -154,21 +174,33 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [InlineData("debit")]
     public async Task MalformedMovementJsonReturnsBadRequest(string movement)
     {
+        // Arrange
         var (_, path) = await OpenWalletAsync("Malformed request wallet");
         using var content = new StringContent("invalid json", System.Text.Encoding.UTF8, "application/json");
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync($"{path}/{movement}", content)).StatusCode);
+
+        // Act
+        var response = await client.PostAsync($"{path}/{movement}", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>Assertions: a zero balance cannot fund even a one-point redemption.</summary>
     [Fact]
     public async Task EmptyWalletAndEmptyIdentityAreProtected()
     {
+        // Arrange
         var (_, path) = await OpenWalletAsync("Empty wallet");
+
+        // Act
+        var debit = await client.PostAsJsonAsync(path + "/debit",
+            new { operationId = Guid.NewGuid(), points = 1, reason = "Redemption" });
+        var emptyIdentity = await client.GetAsync($"/api/wallets/{Guid.Empty}");
+
+        // Assert
         Assert.Equal(HttpStatusCode.UnprocessableEntity,
-            (await client.PostAsJsonAsync(path + "/debit",
-                new { operationId = Guid.NewGuid(), points = 1, reason = "Redemption" })).StatusCode);
-        Assert.Equal(HttpStatusCode.UnprocessableEntity,
-            (await client.GetAsync($"/api/wallets/{Guid.Empty}")).StatusCode);
+            debit.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, emptyIdentity.StatusCode);
     }
 
     /// <summary>HTTP validation: opening requires a meaningful bounded name.</summary>
@@ -178,15 +210,27 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [InlineData("{\"name\":\"   \"}")]
     public async Task InvalidWalletNameReturnsBadRequest(string json)
     {
+        // Arrange
         using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsync("/api/wallets", content)).StatusCode);
+
+        // Act
+        var response = await client.PostAsync("/api/wallets", content);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>HTTP validation: the public name limit matches the WalletName value object.</summary>
     [Fact]
     public async Task WalletNameAboveMaximumLengthReturnsBadRequest()
     {
-        var response = await client.PostAsJsonAsync("/api/wallets", new { name = new string('x', 121) });
+        // Arrange
+        var request = new { name = new string('x', 121) };
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/wallets", request);
+
+        // Assert
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -194,11 +238,16 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task WalletLifecycleControlsMovements()
     {
+        // Arrange
         var (_, path) = await OpenWalletAsync("Lifecycle wallet");
         await client.PostAsJsonAsync(path + "/credit",
             new { operationId = Guid.NewGuid(), points = 100, reason = "Purchase reward" });
 
-        Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync(path + "/suspend", null)).StatusCode);
+        // Act
+        var suspended = await client.PostAsync(path + "/suspend", null);
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, suspended.StatusCode);
         Assert.Equal(HttpStatusCode.OK,
             (await client.PostAsJsonAsync(path + "/credit",
                 new { operationId = Guid.NewGuid(), points = 10, reason = "Purchase reward" })).StatusCode);
@@ -224,12 +273,15 @@ public sealed class WalletApiTests : IClassFixture<WebApplicationFactory<Program
     [Fact]
     public async Task CreditRetryIsIdempotentAndLedgerIsPaged()
     {
+        // Arrange
         var (_, path) = await OpenWalletAsync("Ledger wallet");
         var operationId = Guid.NewGuid();
         var request = new { operationId, points = 25, reason = "Welcome reward" };
 
+        // Act
         var first = await client.PostAsJsonAsync(path + "/credit", request);
         var replay = await client.PostAsJsonAsync(path + "/credit", request);
+        // Assert
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
         Assert.Equal(

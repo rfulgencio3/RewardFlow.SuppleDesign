@@ -1,3 +1,4 @@
+using RewardFlow.SuppleDesign.Tests.Integration.Fixtures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -6,7 +7,7 @@ using RewardFlow.SuppleDesign.Application.Wallets;
 using RewardFlow.SuppleDesign.Infrastructure.Persistence;
 using RewardFlow.SuppleDesign.Infrastructure.Repositories;
 
-namespace RewardFlow.SuppleDesign.Tests;
+namespace RewardFlow.SuppleDesign.Tests.Integration.Migrations;
 
 /// <summary>Isolated databases demonstrate fresh installation, historical replay and safe downgrade behavior.</summary>
 [Collection(PostgresDatabaseCollection.Name)]
@@ -16,6 +17,7 @@ public sealed class TransferMigrationTests
     [Fact]
     public async Task UpgradePreservesHistoryAndDowngradeCannotDiscardTransfers()
     {
+        // Arrange
         var connection = Environment.GetEnvironmentVariable("ConnectionStrings__RewardFlow") ??
             "Host=localhost;Port=5432;Database=rewardflow;Username=rewardflow;Password=rewardflow_dev";
         var database = "rewardflow_transfer_test_" + Guid.NewGuid().ToString("N");
@@ -24,6 +26,7 @@ public sealed class TransferMigrationTests
         await admin.OpenAsync();
         await using (var create = new NpgsqlCommand($"CREATE DATABASE \"{database}\"", admin))
             await create.ExecuteNonQueryAsync();
+        // Act
         try
         {
             var builder = new NpgsqlConnectionStringBuilder(connection) { Database = database, Pooling = false };
@@ -31,7 +34,6 @@ public sealed class TransferMigrationTests
             await using var context = new RewardFlowDbContext(options);
             var migrator = context.GetService<IMigrator>();
             const string previous = "20261023184620_AddRewardTransactionLedger";
-            // Exercise a fresh installation first, then downgrade without transfers to seed the old schema.
             await migrator.MigrateAsync();
             Assert.True(await context.Database.SqlQueryRaw<bool>("""
                 SELECT column_default IS NULL AS "Value"
@@ -52,6 +54,7 @@ public sealed class TransferMigrationTests
             await migrator.MigrateAsync();
             var repository = new PostgresRewardsWalletRepository(context);
             var replay = await new CreditRewardPoints(repository, TimeProvider.System).ExecuteAsync(source, operation, 100, "Funding");
+            // Assert
             Assert.Equal(instant, replay.OccurredAtUtc);
             Assert.Equal(100, replay.BalanceAfter);
             Assert.Equal(1, (await repository.FindAsync(source))!.Revision);
@@ -67,7 +70,6 @@ public sealed class TransferMigrationTests
         }
         finally
         {
-            // This database name is generated exclusively for this test and never names a user database.
             await using var drop = new NpgsqlCommand($"DROP DATABASE \"{database}\" WITH (FORCE)", admin);
             await drop.ExecuteNonQueryAsync();
         }
